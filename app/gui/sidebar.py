@@ -1,19 +1,52 @@
-"""
-Left-side tools sidebar containing all user controls:
-  - Zoom / Interpolation
-  - Smoothing Filters  (Average, Gaussian)
-  - Edge Detection     (Sobel, Prewitt)
-  - Median Filter
-  - Local Histogram Equalization
-"""
+"""Left-side tools sidebar containing the image processing controls."""
 
-from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
-    QPushButton, QLabel, QComboBox, QDoubleSpinBox, QScrollArea
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
+    QPushButton, QLabel, QComboBox, QDoubleSpinBox, QScrollArea,
+    QToolButton, QFrame
 )
-from PyQt5.QtCore import pyqtSignal
+from PyQt6.QtCore import pyqtSignal, Qt
 
 from ..core.styles import SIDEBAR_STYLE
+
+
+class CollapsibleSection(QWidget):
+    def __init__(self, title: str, open_by_default: bool = False, parent=None):
+        super().__init__(parent)
+        self._button = QToolButton()
+        self._button.setText(title)
+        self._button.setCheckable(True)
+        self._button.setChecked(open_by_default)
+        self._button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self._button.setArrowType(
+            Qt.ArrowType.DownArrow if open_by_default else Qt.ArrowType.RightArrow
+        )
+        self._button.clicked.connect(self._toggle)
+        self._button.setStyleSheet(
+            "QToolButton { text-align: left; border: none; padding: 6px 8px; }"
+        )
+
+        self._body = QFrame()
+        self._body.setFrameShape(QFrame.Shape.NoFrame)
+        self._body.setVisible(open_by_default)
+        self._body_layout = QVBoxLayout(self._body)
+        self._body_layout.setContentsMargins(8, 8, 8, 8)
+        self._body_layout.setSpacing(6)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(self._button)
+        layout.addWidget(self._body)
+
+    def _toggle(self, checked: bool) -> None:
+        self._body.setVisible(checked)
+        self._button.setArrowType(
+            Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow
+        )
+
+    def bodyLayout(self) -> QVBoxLayout:
+        return self._body_layout
 
 
 class ToolsSidebar(QWidget):
@@ -39,7 +72,7 @@ class ToolsSidebar(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedWidth(200)
+        self.setFixedWidth(220)
         self.setStyleSheet(SIDEBAR_STYLE)
 
         # Wrap everything in a scroll area so it never clips on small screens
@@ -49,8 +82,8 @@ class ToolsSidebar(QWidget):
 
         container = QWidget()
         layout    = QVBoxLayout(container)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(6)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(5)
 
         layout.addWidget(self._build_zoom_group())
         layout.addWidget(self._build_smoothing_group())
@@ -67,22 +100,19 @@ class ToolsSidebar(QWidget):
 
     # ── Group builders ────────────────────────────────────────────────────────
 
-    def _build_zoom_group(self) -> QGroupBox:
-        g  = QGroupBox("Zoom / Interpolation")
-        gl = QVBoxLayout(g)
-        gl.setSpacing(3)
+    def _build_zoom_group(self) -> QWidget:
+        section = CollapsibleSection("Zoom / Interpolation", True)
+        gl = section.bodyLayout()
 
-        # Method selector
         r1 = QHBoxLayout()
-        r1.addWidget(QLabel("Method:"))
+        r1.addWidget(QLabel("Method"))
         self._zoom_method = QComboBox()
         self._zoom_method.addItems(["Nearest-Neighbor", "Bilinear"])
         r1.addWidget(self._zoom_method)
         gl.addLayout(r1)
 
-        # Step scale
         r2 = QHBoxLayout()
-        r2.addWidget(QLabel("Step ×:"))
+        r2.addWidget(QLabel("Step ×"))
         self._zoom_scale = QDoubleSpinBox()
         self._zoom_scale.setRange(1.1, 8.0)
         self._zoom_scale.setSingleStep(0.25)
@@ -90,34 +120,33 @@ class ToolsSidebar(QWidget):
         r2.addWidget(self._zoom_scale)
         gl.addLayout(r2)
 
-        btn_in  = QPushButton("⊕  Zoom In")
-        btn_out = QPushButton("⊖  Zoom Out")
+        btn_row = QHBoxLayout()
+        btn_in  = QPushButton("⊕ Zoom In")
+        btn_out = QPushButton("⊖ Out")
         btn_in .clicked.connect(
             lambda: self.apply_zoom.emit(self._zoom_scale.value(),
                                          self._zoom_method.currentText()))
         btn_out.clicked.connect(
             lambda: self.apply_zoom.emit(1.0 / self._zoom_scale.value(),
                                          self._zoom_method.currentText()))
-        gl.addWidget(btn_in)
-        gl.addWidget(btn_out)
-        return g
+        btn_row.addWidget(btn_in)
+        btn_row.addWidget(btn_out)
+        gl.addLayout(btn_row)
+        return section
 
-    def _build_smoothing_group(self) -> QGroupBox:
-        g  = QGroupBox("Smoothing Filters")
-        sl = QVBoxLayout(g)
-        sl.setSpacing(3)
+    def _build_smoothing_group(self) -> QWidget:
+        section = CollapsibleSection("Smoothing Filters", True)
+        sl = section.bodyLayout()
 
-        # Kernel size
         r1 = QHBoxLayout()
-        r1.addWidget(QLabel("Kernel:"))
+        r1.addWidget(QLabel("Kernel"))
         self._smooth_kernel = QComboBox()
         self._smooth_kernel.addItems(["3×3", "5×5", "7×7", "9×9", "11×11"])
         r1.addWidget(self._smooth_kernel)
         sl.addLayout(r1)
 
-        # Gaussian sigma
         r2 = QHBoxLayout()
-        r2.addWidget(QLabel("Gauss σ:"))
+        r2.addWidget(QLabel("Gauss σ"))
         self._gauss_sigma = QDoubleSpinBox()
         self._gauss_sigma.setRange(0.1, 20.0)
         self._gauss_sigma.setSingleStep(0.1)
@@ -125,74 +154,75 @@ class ToolsSidebar(QWidget):
         r2.addWidget(self._gauss_sigma)
         sl.addLayout(r2)
 
-        btn_avg   = QPushButton("▦  Average Filter")
-        btn_gauss = QPushButton("◉  Gaussian Filter")
-        btn_avg  .clicked.connect(self._emit_average)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(4)
+        grid.setVerticalSpacing(4)
+        btn_avg   = QPushButton("Average")
+        btn_gauss = QPushButton("Gaussian")
+        btn_avg.clicked.connect(self._emit_average)
         btn_gauss.clicked.connect(self._emit_gaussian)
-        sl.addWidget(btn_avg)
-        sl.addWidget(btn_gauss)
-        return g
+        grid.addWidget(btn_avg, 0, 0)
+        grid.addWidget(btn_gauss, 0, 1)
+        sl.addLayout(grid)
+        return section
 
-    def _build_edge_group(self) -> QGroupBox:
-        g  = QGroupBox("Edge Detection")
-        el = QVBoxLayout(g)
-        el.setSpacing(3)
+    def _build_edge_group(self) -> QWidget:
+        section = CollapsibleSection("Edge Detection")
+        el = section.bodyLayout()
 
         r1 = QHBoxLayout()
-        r1.addWidget(QLabel("Operator:"))
+        r1.addWidget(QLabel("Operator"))
         self._edge_op = QComboBox()
         self._edge_op.addItems(["Sobel", "Prewitt"])
         r1.addWidget(self._edge_op)
         el.addLayout(r1)
 
         r2 = QHBoxLayout()
-        r2.addWidget(QLabel("Show:"))
+        r2.addWidget(QLabel("Show"))
         self._edge_component = QComboBox()
         self._edge_component.addItems(["Magnitude", "Horizontal (Gx)", "Vertical (Gy)"])
         r2.addWidget(self._edge_component)
         el.addLayout(r2)
 
-        btn = QPushButton("⟁  Detect Edges")
+        btn = QPushButton("⟁ Detect Edges")
         btn.clicked.connect(lambda: self.apply_edge.emit(
             self._edge_op.currentText(),
             self._edge_component.currentText()
         ))
         el.addWidget(btn)
-        return g
+        return section
 
-    def _build_median_group(self) -> QGroupBox:
-        g  = QGroupBox("Median Filter  (Non-linear)")
-        ml = QVBoxLayout(g)
-        ml.setSpacing(3)
+    def _build_median_group(self) -> QWidget:
+        section = CollapsibleSection("Median Filter")
+        ml = section.bodyLayout()
 
         r1 = QHBoxLayout()
-        r1.addWidget(QLabel("Kernel:"))
+        r1.addWidget(QLabel("Kernel"))
         self._median_kernel = QComboBox()
         self._median_kernel.addItems(["3×3", "5×5", "7×7"])
         r1.addWidget(self._median_kernel)
         ml.addLayout(r1)
 
-        btn = QPushButton("⊡  Apply Median")
+        btn = QPushButton("⊡ Apply Median")
         btn.clicked.connect(self._emit_median)
         ml.addWidget(btn)
-        return g
+        return section
 
-    def _build_histeq_group(self) -> QGroupBox:
-        g  = QGroupBox("Local Histogram Equalization")
-        hl = QVBoxLayout(g)
-        hl.setSpacing(3)
+    def _build_histeq_group(self) -> QWidget:
+        section = CollapsibleSection("Local Histogram Equalization")
+        hl = section.bodyLayout()
 
         r1 = QHBoxLayout()
-        r1.addWidget(QLabel("Block:"))
+        r1.addWidget(QLabel("Block"))
         self._block_size = QComboBox()
         self._block_size.addItems(["8×8", "16×16", "32×32", "64×64"])
         r1.addWidget(self._block_size)
         hl.addLayout(r1)
 
-        btn = QPushButton("◑  Local Equalize")
+        btn = QPushButton("◑ Local Equalize")
         btn.clicked.connect(self._emit_hist_eq)
         hl.addWidget(btn)
-        return g
+        return section
 
     # ── Signal emitters ───────────────────────────────────────────────────────
 
