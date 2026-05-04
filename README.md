@@ -1,6 +1,6 @@
-# MedVision Workbench (DIP Project)
+# (DIP Project)
 
-MedVision Workbench is a desktop application for medical and standard image enhancement, built with PyQt5 and NumPy.
+is a desktop application for medical and standard image enhancement, built with PyQt5 and NumPy.
 
 The project focuses on spatial-domain digital image processing with core algorithms implemented from scratch, including interpolation, filtering, edge detection, and local histogram equalization.
 
