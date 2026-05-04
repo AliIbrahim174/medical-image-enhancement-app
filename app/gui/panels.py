@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import (
         QPushButton, QListWidget, QListWidgetItem, QHBoxLayout
 )
 from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtGui import QColor
 
 from .widgets import HistogramWidget
 from ..core.styles import (
@@ -150,9 +151,18 @@ class PipelinePanel(QWidget):
     # ── Public API ────────────────────────────────────────────────────────────
 
     def add_step(self, label: str) -> None:
-        """Append a numbered step entry and scroll to it."""
+        """Append a numbered step entry with color-coding for acc vs orig mode."""
         n    = self._list.count() + 1
         item = QListWidgetItem(f"{n}. {label}")
+        
+        # Color-code based on accumulate mode
+        if "(acc)" in label:
+            item.setForeground(QColor("#4ade80"))  # GREEN for accumulate
+            item.setBackground(QColor("#1a3d1a"))  # Dark green background
+        elif "(orig)" in label:
+            item.setForeground(QColor("#f87171"))  # RED for original
+            item.setBackground(QColor("#3d1a1a"))  # Dark red background
+        
         self._list.addItem(item)
         self._list.scrollToBottom()
         self._count.setText(str(self._list.count()))

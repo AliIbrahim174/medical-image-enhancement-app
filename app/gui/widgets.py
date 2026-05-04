@@ -35,6 +35,12 @@ class ImageCanvas(QScrollArea):
         self.setStyleSheet("background: #080a0d; border: none;")
         self._array: np.ndarray | None = None
         self._zoom_percent = 100
+        self._mode: str = "none"  # 'none', 'pan', 'annotate'
+        self._annotations: list[tuple[float, float]] = []  # relative coords (x_ratio, y_ratio)
+        self._pan_active = False
+        self._pan_start = None
+        self._h_start = 0
+        self._v_start = 0
         self.setMouseTracking(True)
         self.viewport().setMouseTracking(True)
         self._label.setMouseTracking(True)
@@ -91,12 +97,82 @@ class ImageCanvas(QScrollArea):
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation
         )
+        # Paint annotations onto a copy of the scaled pixmap
+        display = QPixmap(scaled)
+        if self._annotations:
+            painter = QPainter(display)
+            painter.setPen(QColor("#ff4d6d"))
+            painter.setBrush(QColor("#ff4d6d"))
+            for rx, ry in self._annotations:
+                x = int(rx * display.width())
+                y = int(ry * display.height())
+                painter.drawEllipse(x - 4, y - 4, 8, 8)
+            painter.end()
+
         self._label.setText("")
-        self._label.setPixmap(scaled)
+        self._label.setPixmap(display)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._refresh()
+
+    # ----------------- Interaction modes: pan & annotate -----------------
+    def set_interaction_mode(self, mode: str) -> None:
+        self._mode = mode or "none"
+        if self._mode == "pan":
+            self.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
+        elif self._mode == "annotate":
+            self.viewport().setCursor(Qt.CursorShape.CrossCursor)
+        else:
+            self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
+
+    def mousePressEvent(self, event):
+        if self._mode == "pan" and event.button() == Qt.MouseButton.LeftButton:
+            self._pan_active = True
+            self._pan_start = event.position().toPoint()
+            self._h_start = self.horizontalScrollBar().value()
+            self._v_start = self.verticalScrollBar().value()
+            self.viewport().setCursor(Qt.CursorShape.ClosedHandCursor)
+            return
+
+        if self._mode == "annotate" and event.button() == Qt.MouseButton.LeftButton:
+            # map viewport coords to label coordinates
+            vp_pos = event.position().toPoint()
+            label_pos = self._label.mapFrom(self.viewport(), vp_pos)
+            pix = self._label.pixmap()
+            if pix is None:
+                return
+            pw, ph = pix.width(), pix.height()
+            # compute offset due to centering inside label
+            ox = max(0, (self._label.width() - pw) // 2)
+            oy = max(0, (self._label.height() - ph) // 2)
+            x = label_pos.x() - ox
+            y = label_pos.y() - oy
+            if 0 <= x < pw and 0 <= y < ph:
+                rx = x / pw
+                ry = y / ph
+                self._annotations.append((rx, ry))
+                self._refresh()
+            return
+
+        return super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._mode == "pan" and self._pan_active:
+            cur = event.position().toPoint()
+            dx = cur.x() - self._pan_start.x()
+            dy = cur.y() - self._pan_start.y()
+            self.horizontalScrollBar().setValue(self._h_start - dx)
+            self.verticalScrollBar().setValue(self._v_start - dy)
+            return
+        return super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._mode == "pan" and event.button() == Qt.MouseButton.LeftButton:
+            self._pan_active = False
+            self.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
+            return
+        return super().mouseReleaseEvent(event)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

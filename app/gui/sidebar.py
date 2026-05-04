@@ -3,11 +3,11 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
     QPushButton, QLabel, QComboBox, QDoubleSpinBox, QScrollArea,
-    QToolButton, QFrame
+    QToolButton, QFrame, QCheckBox
 )
 from PyQt6.QtCore import pyqtSignal, Qt
 
-from ..core.styles import SIDEBAR_STYLE
+from ..core.styles import SIDEBAR_STYLE, GREEN, RED
 
 
 class CollapsibleSection(QWidget):
@@ -69,6 +69,7 @@ class ToolsSidebar(QWidget):
     apply_edge    = pyqtSignal(str, str)
     apply_hist_eq = pyqtSignal(int)
     apply_median  = pyqtSignal(int)
+    accumulate_toggled = pyqtSignal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -84,6 +85,30 @@ class ToolsSidebar(QWidget):
         layout    = QVBoxLayout(container)
         layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(5)
+
+        # State mode checkbox with theme styling
+        mode_section = QWidget()
+        mode_layout = QHBoxLayout(mode_section)
+        mode_layout.setContentsMargins(0, 0, 0, 0)
+        mode_layout.setSpacing(4)
+        mode_checkbox = QCheckBox("Accumulate Mode")
+        mode_checkbox.setChecked(True)
+        mode_checkbox.stateChanged.connect(
+            lambda state: self.accumulate_toggled.emit(mode_checkbox.isChecked())
+        )
+        mode_checkbox.setStyleSheet(
+            "QCheckBox { color: #4ade80; font-size: 10px; font-weight: 600; }"
+            "QCheckBox::indicator { width: 16px; height: 16px; }"
+            "QCheckBox::indicator:unchecked { background: #1c2030; border: 1px solid #252d42; border-radius: 3px; }"
+            "QCheckBox::indicator:checked { background: #4ade80; border: 1px solid #4ade80; border-radius: 3px; }"
+        )
+        mode_label = QLabel("apply to current")
+        mode_label.setStyleSheet("color: #4ade80; font-size: 9px; margin-left: 2px;")
+        mode_layout.addWidget(mode_checkbox)
+        mode_layout.addWidget(mode_label)
+        mode_layout.addStretch()
+        layout.addWidget(mode_section)
+        layout.addWidget(self._separator())
 
         layout.addWidget(self._build_zoom_group())
         layout.addWidget(self._build_smoothing_group())
@@ -121,8 +146,8 @@ class ToolsSidebar(QWidget):
         gl.addLayout(r2)
 
         btn_row = QHBoxLayout()
-        btn_in  = QPushButton("⊕ Zoom In")
-        btn_out = QPushButton("⊖ Out")
+        btn_in  = QPushButton(" ⊖ ZoomOut")
+        btn_out = QPushButton(" ⊕ Zoom In")
         btn_in .clicked.connect(
             lambda: self.apply_zoom.emit(self._zoom_scale.value(),
                                          self._zoom_method.currentText()))
@@ -225,6 +250,14 @@ class ToolsSidebar(QWidget):
         return section
 
     # ── Signal emitters ───────────────────────────────────────────────────────
+
+    @staticmethod
+    def _separator() -> QFrame:
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setFixedHeight(1)
+        sep.setStyleSheet("background: #252d42;")
+        return sep
 
     @staticmethod
     def _combo_size(combo: QComboBox) -> int:

@@ -64,6 +64,10 @@ class MainWindow(QMainWindow):
         self._current: np.ndarray | None = None
         self._history: list[np.ndarray] = []
         self._history_labels: list[str] = []
+        self._redo_stack: list[np.ndarray] = []
+        self._redo_labels: list[str] = []
+        self._saved_state: np.ndarray | None = None
+        self._accumulate: bool = True  # True: apply to current (accumulated); False: apply to original
         self._worker: ProcessingWorker | None = None
         self._current_path: str = ""
         self._loaded_metadata: dict[str, str] = {}
@@ -95,7 +99,9 @@ class MainWindow(QMainWindow):
         self._undo_action.triggered.connect(self._undo)
 
         self._redo_action = QAction("Redo", self)
+        self._redo_action.setShortcut("Ctrl+Shift+Z")
         self._redo_action.triggered.connect(self._redo)
+        self._redo_action.setEnabled(False)
 
         self._reset_action = QAction("Reset", self)
         self._reset_action.setShortcut("Ctrl+R")
@@ -143,35 +149,6 @@ class MainWindow(QMainWindow):
             layout.addWidget(self._toolbar_button(label, action))
 
         layout.addWidget(self._separator())
-
-        view_box = QWidget()
-        view_box.setStyleSheet(f"border: 1px solid {ACCENT_DIM}; border-radius: 5px;")
-        view_layout = QHBoxLayout(view_box)
-        view_layout.setContentsMargins(0, 0, 0, 0)
-        view_layout.setSpacing(0)
-
-        self._view_toggle_group = QButtonGroup(self)
-        self._view_toggle_group.setExclusive(True)
-        self._view_buttons: list[QPushButton] = []
-        for index, label in enumerate(["Single", "Before/After", "Edge"]):
-            btn = QPushButton(label)
-            btn.setCheckable(True)
-            btn.clicked.connect(lambda _checked=False, i=index: self._switch_view(i))
-            btn.setStyleSheet(
-                f"QPushButton {{ padding: 4px 10px; font-size: 10.5px; color: {TEXT2};"
-                f" background: transparent; border: none; border-right: 1px solid {ACCENT_DIM}; }}"
-                f"QPushButton:hover {{ color: {TEXT1}; background: {ACCENT_DIM}; }}"
-                f"QPushButton:checked {{ color: {ACCENT}; background: {ACCENT_DIM}; }}"
-            )
-            self._view_toggle_group.addButton(btn)
-            self._view_buttons.append(btn)
-            view_layout.addWidget(btn)
-        if self._view_buttons:
-            self._view_buttons[0].setChecked(True)
-            last = self._view_buttons[-1]
-            last.setStyleSheet(last.styleSheet().replace(f"border-right: 1px solid {ACCENT_DIM};", ""))
-
-        layout.addWidget(view_box)
         layout.addStretch(1)
         return bar
 
@@ -236,6 +213,7 @@ class MainWindow(QMainWindow):
         self._sidebar.apply_edge.connect(self._on_apply_edge)
         self._sidebar.apply_hist_eq.connect(self._on_hist_eq)
         self._sidebar.apply_median.connect(self._on_median)
+        self._sidebar.accumulate_toggled.connect(self._on_accumulate_toggled)
         root.addWidget(self._sidebar)
 
         self._canvas_area = self._build_canvas_area()
@@ -285,12 +263,27 @@ class MainWindow(QMainWindow):
             )
             if index == 0:
                 button.setChecked(True)
-            button.clicked.connect(lambda _checked=False, t=tip: self._set_status(t, False))
+            button.clicked.connect(lambda _checked=False, t=tip, i=index: self._set_interaction_mode(i, t))
             self._icon_group.addButton(button)
             layout.addWidget(button, 0, Qt.AlignmentFlag.AlignHCenter)
 
         layout.addStretch(1)
         return panel
+
+    def _set_interaction_mode(self, index: int, tip: str) -> None:
+        """Set interaction mode based on the icon index and update canvases."""
+        # map indices to modes: 0 -> pan, 7 -> annotate, others -> none
+        if index == 0:
+            mode = "pan"
+        elif index == 7:
+            mode = "annotate"
+        else:
+            mode = "none"
+
+        for canvas in self._all_canvases():
+            canvas.set_interaction_mode(mode)
+
+        self._set_status(tip, False)
 
     def _build_canvas_area(self) -> QWidget:
         area = QWidget()
@@ -490,7 +483,7 @@ class MainWindow(QMainWindow):
         self._status_zoom.setStyleSheet(f"font-family: 'JetBrains Mono', monospace; color: {TEXT1};")
         self._status_memory = QLabel("—")
         self._status_memory.setStyleSheet(f"font-family: 'JetBrains Mono', monospace; color: {TEXT1};")
-        self._status_footer = QLabel("Cairo University · BioEng")
+        self._status_footer = QLabel("Team 8 - CUFE - BDE - DIP spring 26")
         self._status_footer.setStyleSheet(f"color: {TEXT3};")
 
         host = QWidget()
@@ -546,6 +539,14 @@ class MainWindow(QMainWindow):
         self._status_dot.setStyleSheet(
             f"background: {GREEN if active else TEXT3}; border-radius: 3px;"
         )
+
+    def _sync_dirty_state(self) -> None:
+        if self._current is None:
+            self.setWindowModified(False)
+            return
+
+        is_dirty = self._saved_state is None or not np.array_equal(self._current, self._saved_state)
+        self.setWindowModified(is_dirty)
 
     def _sync_view_zoom(self) -> None:
         for canvas in self._all_canvases():
@@ -621,8 +622,6 @@ class MainWindow(QMainWindow):
 
     def _switch_view(self, index: int) -> None:
         self._canvas_tabs.setCurrentIndex(index)
-        for i, button in enumerate(self._view_buttons):
-            button.setChecked(i == index)
 
     def _update_view_zoom(self, value: int) -> None:
         self._view_zoom_percent = value
@@ -685,6 +684,9 @@ class MainWindow(QMainWindow):
             self._history.clear()
             self._history_labels.clear()
             self._pipeline.clear()
+            self._redo_stack.clear()
+            self._redo_labels.clear()
+            self._saved_state = self._current.copy()
             self._zoom_base = None
             self._zoom_factor = 1.0
             self._view_zoom_percent = 100
@@ -700,6 +702,7 @@ class MainWindow(QMainWindow):
                 f"Loaded: {os.path.basename(path)}  ({result.metadata.get('Width', '?')} × {result.metadata.get('Height', '?')})  Format: {result.format}",
                 True,
             )
+            self._sync_dirty_state()
         except Exception as exc:
             QMessageBox.critical(self, "Unexpected Error", str(exc))
 
@@ -721,6 +724,8 @@ class MainWindow(QMainWindow):
         if err:
             QMessageBox.critical(self, "Save Error", err)
         else:
+            self._saved_state = self._current.copy()
+            self._sync_dirty_state()
             self._set_status(f"Saved: {os.path.basename(path)}", True)
 
     # ------------------------------------------------------------- state ----
@@ -735,11 +740,22 @@ class MainWindow(QMainWindow):
         if self._current is not None:
             self._history.append(self._current.copy())
             self._history_labels.append(label)
+            # New operation invalidates the redo stack
+            self._redo_stack.clear()
+            self._redo_labels.clear()
+            self._redo_action.setEnabled(False)
 
     def _undo(self):
         if not self._history:
             self._set_status("Nothing to undo.", False)
             return
+        # move current state to redo stack, restore previous
+        if self._current is not None:
+            self._redo_stack.append(self._current.copy())
+            # label for redo describes what will be redone
+            self._redo_labels.append(self._history_labels[-1] if self._history_labels else "?")
+            self._redo_action.setEnabled(True)
+
         self._current = self._history.pop()
         label = self._history_labels.pop() if self._history_labels else "?"
         self._pipeline.remove_last()
@@ -748,10 +764,32 @@ class MainWindow(QMainWindow):
         self._update_canvases()
         self._update_stats_and_metadata(self._loaded_metadata, self._current_path)
         self._sync_view_zoom()
+        self._sync_dirty_state()
         self._set_status(f"Undone: {label}", False)
 
     def _redo(self):
-        self._set_status("Redo is not implemented yet.", False)
+        if not self._redo_stack:
+            self._set_status("Nothing to redo.", False)
+            return
+        # push current to history, restore top of redo stack
+        if self._current is not None:
+            self._history.append(self._current.copy())
+            self._history_labels.append(self._redo_labels[-1] if self._redo_labels else "?")
+
+        self._current = self._redo_stack.pop()
+        redo_label = self._redo_labels.pop() if self._redo_labels else "?"
+        # update pipeline UI to reflect redo (append step)
+        self._pipeline.add_step(redo_label)
+        if not self._redo_stack:
+            self._redo_action.setEnabled(False)
+
+        self._zoom_base = None
+        self._zoom_factor = 1.0
+        self._update_canvases()
+        self._update_stats_and_metadata(self._loaded_metadata, self._current_path)
+        self._sync_view_zoom()
+        self._sync_dirty_state()
+        self._set_status(f"Redone: {redo_label}", False)
 
     def _reset_to_original(self):
         if self._original is None:
@@ -765,6 +803,7 @@ class MainWindow(QMainWindow):
         self._update_canvases()
         self._update_stats_and_metadata(self._loaded_metadata, self._current_path)
         self._sync_view_zoom()
+        self._sync_dirty_state()
         self._set_status("Reset to original.", False)
 
     def _update_canvases(self):
@@ -801,6 +840,7 @@ class MainWindow(QMainWindow):
         self._update_canvases()
         self._update_stats_and_metadata(self._loaded_metadata, self._current_path)
         self._progress.setVisible(False)
+        self._sync_dirty_state()
         self._set_status(f"Done: {label}  -  {result.shape[1]}×{result.shape[0]} px", True)
 
     def _on_worker_error(self, msg: str):
@@ -809,8 +849,60 @@ class MainWindow(QMainWindow):
             self._current = self._history.pop()
             if self._history_labels:
                 self._history_labels.pop()
+        self._sync_dirty_state()
         QMessageBox.critical(self, "Processing Error", msg)
         self._set_status("Error during processing.", False)
+
+    def closeEvent(self, event):
+        if self.isWindowModified() and self._current is not None:
+            choice = QMessageBox.question(
+                self,
+                "Unsaved Changes",
+                "You have unsaved changes. Do you want to save before closing?",
+                QMessageBox.StandardButton.Save
+                | QMessageBox.StandardButton.Discard
+                | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Save,
+            )
+
+            if choice == QMessageBox.StandardButton.Save:
+                if not self._save_before_close():
+                    event.ignore()
+                    return
+            elif choice == QMessageBox.StandardButton.Cancel:
+                event.ignore()
+                return
+
+        event.accept()
+
+    def _save_before_close(self) -> bool:
+        if self._current is None:
+            return True
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Processed Image",
+            self._current_path or "",
+            "PNG Image (*.png);;JPEG Image (*.jpg);;BMP Image (*.bmp)",
+        )
+        if not path:
+            return False
+
+        err = save_image(self._current, path)
+        if err:
+            QMessageBox.critical(self, "Save Error", err)
+            return False
+
+        self._saved_state = self._current.copy()
+        self._sync_dirty_state()
+        self._set_status(f"Saved: {os.path.basename(path)}", True)
+        return True
+
+    def _on_accumulate_toggled(self, checked: bool) -> None:
+        """Toggle between accumulate (current) and original-based processing."""
+        self._accumulate = checked
+        mode_text = "Accumulating" if checked else "From Original"
+        self._set_status(f"Mode: {mode_text}", False)
 
     def _on_apply_zoom(self, step: float, method: str):
         if not self._require_image():
@@ -827,7 +919,8 @@ class MainWindow(QMainWindow):
 
         self._zoom_factor = new_factor
         direction = "In" if step >= 1.0 else "Out"
-        label = f"Zoom {direction} ({method.split('-')[0]}) — {self._zoom_factor:.2f}×"
+        mode_mark = "(acc)" if self._accumulate else "(orig)"
+        label = f"Zoom {direction} ({method.split('-')[0]}) — {self._zoom_factor:.2f}× {mode_mark}"
 
         zoom_func = bilinear_zoom if method == "Bilinear" else nearest_neighbor_zoom
         self._start_worker(zoom_func, label, self._zoom_base.copy(), self._zoom_factor)
@@ -847,13 +940,17 @@ class MainWindow(QMainWindow):
         else:
             return
 
-        self._start_worker(apply_linear_filter, label, self._current, kernel)
+        mode_mark = "(acc)" if self._accumulate else "(orig)"
+        label = f"{label} {mode_mark}"
+        base_image = self._current if self._accumulate else self._original
+        self._start_worker(apply_linear_filter, label, base_image, kernel)
 
     def _on_apply_edge(self, operator: str, component: str):
         if not self._require_image():
             return
 
-        gray = ensure_gray(self._current)
+        base_image = self._current if self._accumulate else self._original
+        gray = ensure_gray(base_image)
         if operator == "Sobel":
             gx, gy, magnitude = sobel_edge(gray)
         else:
@@ -867,7 +964,8 @@ class MainWindow(QMainWindow):
         result = {"Magnitude": magnitude, "Horizontal (Gx)": gx, "Vertical (Gy)": gy}.get(
             component, magnitude
         )
-        label = f"{operator} Edge ({component})"
+        mode_mark = "(acc)" if self._accumulate else "(orig)"
+        label = f"{operator} Edge ({component}) {mode_mark}"
 
         self._push_history(label)
         self._current = result
@@ -881,15 +979,19 @@ class MainWindow(QMainWindow):
     def _on_hist_eq(self, block_size: int):
         if not self._require_image():
             return
-        gray = ensure_gray(self._current)
-        label = f"Local Hist. Eq. {block_size}×{block_size}"
+        base_image = self._current if self._accumulate else self._original
+        gray = ensure_gray(base_image)
+        mode_mark = "(acc)" if self._accumulate else "(orig)"
+        label = f"Local Hist. Eq. {block_size}×{block_size} {mode_mark}"
         self._start_worker(local_histogram_equalization, label, gray, block_size)
 
     def _on_median(self, kernel_size: int):
         if not self._require_image():
             return
-        label = f"Median Filter {kernel_size}×{kernel_size}"
-        self._start_worker(median_filter_scratch, label, self._current, kernel_size)
+        base_image = self._current if self._accumulate else self._original
+        mode_mark = "(acc)" if self._accumulate else "(orig)"
+        label = f"Median Filter {kernel_size}×{kernel_size} {mode_mark}"
+        self._start_worker(median_filter_scratch, label, base_image, kernel_size)
 
     # --------------------------------------------------------------- about --
 
@@ -906,5 +1008,5 @@ class MainWindow(QMainWindow):
             "• Sobel &amp; Prewitt edge detection (from scratch)<br>"
             "• Local Histogram Equalization (from scratch)<br>"
             "• Sequential Enhancement Pipeline with undo<br><br>"
-            "Cairo University — Biomedical Engineering",
+            "Team 8 - CUFE - BDE - DIP spring 26",
         )
