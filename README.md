@@ -38,8 +38,8 @@ DIP-Project/
     core/
       __init__.py
       image_processor.py
-      styles.py
-    DIP/
+      styles.py   ← all Qt stylesheets and colour tokens
+    DIP/   ← all DSP algorithms (from scratch)
       __init__.py
       edge_detection.py
       histogram_equalization.py
@@ -48,14 +48,14 @@ DIP-Project/
       zoom.py
     gui/
       __init__.py
-      main_window.py
-      panels.py
-      sidebar.py
-      widgets.py
+      main_window.py   ← MainWindow (layout, menus, signal wiring)
+      panels.py   ← MetadataPanel + PipelinePanel
+      sidebar.py  ← ToolsSidebar (all filter/zoom controls)
+      widgets.py  ← ImageCanvas + HistogramWidget
     io/
       __init__.py
-      image_io.py
-    workers/
+      image_io.py   ← DICOM / JPEG / BMP / PNG I/O
+    workers/   ← ProcessingWorker (background QThread)
       __init__.py
       processing_worker.py
 ```
