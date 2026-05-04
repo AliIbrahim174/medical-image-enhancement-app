@@ -1,177 +1,262 @@
-"""
-styles.py
-=========
-All Qt stylesheets and shared colour constants for MedVision Workbench.
-Import DARK_STYLE and SIDEBAR_STYLE wherever needed.
-"""
+"""Shared palette and Qt style sheets for the MedVision Workbench UI."""
 
-# ── Colour tokens ─────────────────────────────────────────────────────────────
-BG_DEEP    = "#0a0c10"
-BG_PANEL   = "#0f1117"
-BG_CARD    = "#141824"
-BORDER     = "#1e2230"
-BORDER_MID = "#1a2030"
-ACCENT     = "#00c8ff"
-ACCENT2    = "#0057ff"
-TEXT_DIM   = "#7080a0"
-TEXT_MID   = "#a0b4cc"
-TEXT_MAIN  = "#c0cce0"
-WARN       = "#f0a050"
+BG0 = "#0c0d11"
+BG1 = "#11131a"
+BG2 = "#161923"
+BG3 = "#1c2030"
+BG4 = "#222840"
+BORDER = "#252d42"
+BORDER2 = "#2e3850"
+ACCENT = "#4f9cf9"
+ACCENT2 = "#3b7de8"
+ACCENT_DIM = "#1a3a6e"
+CYAN = "#2dd4bf"
+GREEN = "#4ade80"
+AMBER = "#fbbf24"
+RED = "#f87171"
+TEXT0 = "#e2e8f4"
+TEXT1 = "#9aaec8"
+TEXT2 = "#5a6e88"
+TEXT3 = "#3a4d64"
 
-# ── Application-wide dark theme ───────────────────────────────────────────────
 DARK_STYLE = f"""
 QMainWindow, QWidget {{
-    background-color: {BG_DEEP};
-    color: {TEXT_MAIN};
+    background: {BG0};
+    color: {TEXT0};
+    font-family: "Inter", "Segoe UI", sans-serif;
+    font-size: 12px;
 }}
 QMenuBar {{
-    background: #0d1018;
-    color: #8899b0;
-    border-bottom: 1px solid {BORDER_MID};
+    background: #090a0e;
+    border-bottom: 1px solid {BORDER};
+    spacing: 2px;
 }}
-QMenuBar::item:selected {{ background: #1a2540; color: {ACCENT}; }}
+QMenuBar::item {{
+    background: transparent;
+    color: {TEXT1};
+    padding: 5px 10px;
+    border-radius: 4px;
+}}
+QMenuBar::item:selected {{
+    background: {BG3};
+    color: {TEXT0};
+}}
 QMenu {{
-    background: #0f1420;
-    color: {TEXT_MID};
-    border: 1px solid #1e2a3a;
+    background: {BG1};
+    color: {TEXT1};
+    border: 1px solid {BORDER};
 }}
-QMenu::item:selected {{ background: #1a2540; color: {ACCENT}; }}
-QToolBar {{
-    background: #0d1018;
-    border-bottom: 1px solid {BORDER_MID};
-    spacing: 4px;
-    padding: 2px 4px;
+QMenu::item:selected {{
+    background: {BG3};
+    color: {TEXT0};
+}}
+QToolTip {{
+    background: #1e2535;
+    color: {TEXT0};
+    border: 1px solid {BORDER2};
+    padding: 4px 6px;
+}}
+QScrollBar:vertical {{
+    background: transparent;
+    width: 6px;
+    margin: 0;
+}}
+QScrollBar::handle:vertical {{
+    background: {BG4};
+    border-radius: 3px;
+    min-height: 18px;
+}}
+QScrollBar:horizontal {{
+    background: transparent;
+    height: 6px;
+    margin: 0;
+}}
+QScrollBar::handle:horizontal {{
+    background: {BG4};
+    border-radius: 3px;
+    min-width: 18px;
+}}
+QTabWidget::pane {{
+    border: 1px solid {BORDER};
+    background: {BG0};
+}}
+QTabBar::tab {{
+    background: {BG1};
+    color: {TEXT2};
+    padding: 6px 14px;
+    border: 1px solid {BORDER};
+    border-bottom: none;
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+    margin-right: 2px;
+    font-size: 10.5px;
+}}
+QTabBar::tab:hover {{
+    background: {BG2};
+    color: {TEXT1};
+}}
+QTabBar::tab:selected {{
+    background: {BG0};
+    color: {ACCENT};
+    border-color: {BORDER};
 }}
 QStatusBar {{
     background: #080a0e;
-    color: #4a6080;
+    border-top: 1px solid {BORDER};
+    color: {TEXT2};
     font-size: 10px;
-    border-top: 1px solid {BORDER_MID};
-}}
-QSplitter::handle {{ background: {BORDER_MID}; width: 1px; height: 1px; }}
-QTabWidget::pane {{
-    border: 1px solid {BORDER};
-    background: {BG_DEEP};
-}}
-QTabBar::tab {{
-    background: #0d1018;
-    color: #607080;
-    padding: 6px 16px;
-    border: 1px solid {BORDER_MID};
-    border-bottom: none;
-    font-size: 10px;
-}}
-QTabBar::tab:selected {{
-    background: {BG_DEEP};
-    color: {ACCENT};
-    border-bottom: 2px solid {ACCENT};
 }}
 QProgressBar {{
-    background: {BG_PANEL};
+    background: {BG1};
     border: 1px solid {BORDER};
     border-radius: 3px;
     height: 6px;
     text-align: center;
 }}
-QProgressBar::chunk {{ background: {ACCENT2}; border-radius: 3px; }}
-QScrollBar:vertical {{
-    background: #0d1018; width: 8px; border-radius: 4px;
+QProgressBar::chunk {{
+    background: {ACCENT2};
+    border-radius: 3px;
 }}
-QScrollBar::handle:vertical {{
-    background: #2a3550; border-radius: 4px; min-height: 20px;
+QSlider::groove:horizontal {{
+    background: {BG4};
+    height: 3px;
+    border-radius: 2px;
 }}
-QScrollBar:horizontal {{
-    background: #0d1018; height: 8px; border-radius: 4px;
+QSlider::handle:horizontal {{
+    background: {ACCENT};
+    width: 10px;
+    height: 10px;
+    margin: -4px 0;
+    border-radius: 5px;
 }}
-QScrollBar::handle:horizontal {{
-    background: #2a3550; border-radius: 4px; min-width: 20px;
+QLabel {{
+    color: {TEXT1};
+}}
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
+    background: {BG3};
+    color: {TEXT0};
+    border: 1px solid {BORDER};
+    border-radius: 4px;
+    padding: 3px 6px;
+    selection-background-color: {ACCENT_DIM};
+}}
+QComboBox::drop-down {{
+    border: none;
+    width: 18px;
+}}
+QComboBox QAbstractItemView {{
+    background: {BG2};
+    color: {TEXT0};
+    selection-background-color: {ACCENT_DIM};
 }}
 """
 
-# ── Tools sidebar shared style ────────────────────────────────────────────────
 SIDEBAR_STYLE = f"""
-    QGroupBox {{
-        color: {TEXT_DIM};
-        font-size: 10px;
-        font-weight: bold;
-        border: 1px solid {BORDER};
-        border-radius: 5px;
-        margin-top: 8px;
-        padding-top: 10px;
-    }}
-    QGroupBox::title {{
-        subcontrol-origin: margin;
-        left: 8px;
-        color: #4080c0;
-    }}
-    QPushButton {{
-        background: {BG_CARD};
-        color: {TEXT_MID};
-        border: 1px solid #1e2a3a;
-        border-radius: 4px;
-        padding: 5px 8px;
-        font-size: 10px;
-        text-align: left;
-    }}
-    QPushButton:hover {{ background: #1a2540; color: {ACCENT}; border-color: #204060; }}
-    QPushButton:pressed {{ background: #0d1628; }}
-    QLabel {{ color: {TEXT_DIM}; font-size: 10px; }}
-    QSpinBox, QDoubleSpinBox, QComboBox {{
-        background: {BG_PANEL};
-        color: {TEXT_MID};
-        border: 1px solid {BORDER};
-        border-radius: 3px;
-        padding: 2px 4px;
-        font-size: 10px;
-    }}
-    QComboBox::drop-down {{ border: none; }}
-    QComboBox QAbstractItemView {{
-        background: {BG_CARD};
-        color: {TEXT_MID};
-        selection-background-color: #1a2540;
-    }}
+QScrollArea {{
+    background: {BG1};
+    border: none;
+}}
+QToolButton, QPushButton {{
+    background: {BG3};
+    color: {TEXT1};
+    border: 1px solid {BORDER};
+    border-radius: 4px;
+    padding: 5px 8px;
+}}
+QToolButton:hover, QPushButton:hover {{
+    background: {BG4};
+    color: {TEXT0};
+    border-color: {BORDER2};
+}}
+QToolButton:checked {{
+    background: {ACCENT_DIM};
+    color: {ACCENT};
+    border-color: {ACCENT};
+}}
+QGroupBox {{
+    background: {BG2};
+    border: 1px solid {BORDER};
+    border-radius: 6px;
+    margin-top: 8px;
+    color: {TEXT1};
+    font-size: 10.5px;
+    font-weight: 600;
+}}
+QGroupBox::title {{
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 4px;
+}}
+QTextEdit {{
+    background: {BG2};
+    color: {TEXT1};
+    border: 1px solid {BORDER};
+    border-radius: 4px;
+}}
 """
 
-# ── Toolbar button style (reusable) ──────────────────────────────────────────
 TOOLBAR_BTN_STYLE = f"""
-    QPushButton {{
-        background: {BG_CARD}; color: #80a0c0;
-        border: 1px solid #1e2a3a; border-radius: 4px;
-        padding: 0 10px; font-size: 11px;
-    }}
-    QPushButton:hover {{ background: #1a2540; color: {ACCENT}; }}
+QPushButton {{
+    background: transparent;
+    color: {TEXT1};
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 11px;
+}}
+QPushButton:hover {{
+    background: {BG3};
+    border-color: {BORDER2};
+    color: {TEXT0};
+}}
+QPushButton:checked {{
+    background: {ACCENT_DIM};
+    border-color: {ACCENT};
+    color: {ACCENT};
+}}
 """
 
-# ── Pipeline panel list style ─────────────────────────────────────────────────
 PIPELINE_LIST_STYLE = f"""
-    QListWidget {{
-        background: {BG_PANEL};
-        border: 1px solid {BORDER};
-        border-radius: 4px;
-        color: #c8d0e0;
-        font-size: 10px;
-    }}
-    QListWidget::item {{ padding: 4px 6px; border-bottom: 1px solid #1a1e2a; }}
-    QListWidget::item:selected {{ background: #1a2540; color: {ACCENT}; }}
+QListWidget {{
+    background: {BG2};
+    border: 1px solid {BORDER};
+    border-radius: 4px;
+    color: {TEXT0};
+    font-size: 10px;
+}}
+QListWidget::item {{
+    padding: 5px 7px;
+    border-bottom: 1px solid {BORDER};
+}}
+QListWidget::item:selected {{
+    background: {ACCENT_DIM};
+    color: {ACCENT};
+}}
 """
 
 PIPELINE_UNDO_STYLE = f"""
-    QPushButton {{
-        background: #1a1e2a; color: {WARN};
-        border: 1px solid #2a3040; border-radius: 4px;
-        padding: 5px; font-size: 10px;
-    }}
-    QPushButton:hover {{ background: #252c40; }}
+QPushButton {{
+    background: {BG3};
+    color: {TEXT1};
+    border: 1px solid {BORDER};
+    border-radius: 4px;
+    padding: 5px 8px;
+    font-size: 10px;
+}}
+QPushButton:hover {{
+    background: #1e0f0f;
+    border-color: #4a1515;
+    color: {RED};
+}}
 """
 
-# ── Metadata text area ────────────────────────────────────────────────────────
 METADATA_TEXT_STYLE = f"""
-    QTextEdit {{
-        background: {BG_PANEL};
-        border: 1px solid {BORDER};
-        border-radius: 4px;
-        color: #8899b0;
-        font-size: 10px;
-        font-family: 'Courier New', monospace;
-    }}
+QTextEdit {{
+    background: {BG2};
+    border: 1px solid {BORDER};
+    border-radius: 4px;
+    color: {TEXT0};
+    font-size: 10px;
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+}}
 """

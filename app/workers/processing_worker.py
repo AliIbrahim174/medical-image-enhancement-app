@@ -4,7 +4,7 @@ thread, preventing the GUI from freezing during heavy operations.
 """
 
 import numpy as np
-from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt6.QtCore import QThread, pyqtSignal
 
 
 class ProcessingWorker(QThread):

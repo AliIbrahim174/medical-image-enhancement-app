@@ -1,14 +1,10 @@
-"""
-Reusable, self-contained Qt widgets:
-  - ImageCanvas      — scrollable numpy-array image viewer
-  - HistogramWidget  — custom-painted 256-bin histogram
-"""
+"""Reusable, self-contained Qt widgets used by the MedVision workspace."""
 
 import numpy as np
 
-from PyQt5.QtWidgets import QScrollArea, QLabel, QWidget
-from PyQt5.QtCore    import Qt
-from PyQt5.QtGui     import (
+from PyQt6.QtWidgets import QScrollArea, QLabel, QWidget
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import (
     QImage, QPixmap, QPainter, QColor, QLinearGradient, QBrush
 )
 
@@ -29,12 +25,19 @@ class ImageCanvas(QScrollArea):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._label = QLabel()
-        self._label.setAlignment(Qt.AlignCenter)
-        self._label.setStyleSheet("background: #0a0c10;")
+        self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._label.setStyleSheet(
+            "background: #080a0d; color: #3a4d64; font-size: 13px;"
+        )
+        self._label.setText("Open or drop an image")
         self.setWidget(self._label)
         self.setWidgetResizable(True)
-        self.setStyleSheet("background: #0a0c10; border: none;")
+        self.setStyleSheet("background: #080a0d; border: none;")
         self._array: np.ndarray | None = None
+        self._zoom_percent = 100
+        self.setMouseTracking(True)
+        self.viewport().setMouseTracking(True)
+        self._label.setMouseTracking(True)
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -49,13 +52,22 @@ class ImageCanvas(QScrollArea):
 
     def clear(self) -> None:
         self._array = None
-        self._label.clear()
+        self._label.setPixmap(QPixmap())
+        self._label.setText("Open or drop an image")
+
+    def set_display_zoom(self, percent: int) -> None:
+        self._zoom_percent = max(5, min(400, int(percent)))
+        self._refresh()
+
+    def fit_to_window(self) -> None:
+        self.set_display_zoom(100)
 
     # ── Internal ──────────────────────────────────────────────────────────────
 
     def _refresh(self) -> None:
         if self._array is None:
-            self._label.clear()
+            self._label.setPixmap(QPixmap())
+            self._label.setText("Open or drop an image")
             return
 
         arr = self._array
@@ -63,19 +75,23 @@ class ImageCanvas(QScrollArea):
             h, w = arr.shape
             qimg = QImage(
                 arr.astype(np.uint8).tobytes(), w, h, w,
-                QImage.Format_Grayscale8
+                QImage.Format.Format_Grayscale8
             )
         else:
             h, w = arr.shape[:2]
             arr3 = arr[:, :, :3].astype(np.uint8)
-            qimg = QImage(arr3.tobytes(), w, h, w * 3, QImage.Format_RGB888)
+            qimg = QImage(arr3.tobytes(), w, h, w * 3, QImage.Format.Format_RGB888)
 
         pixmap  = QPixmap.fromImage(qimg)
+        target_w = max(1, int(self.viewport().width() * self._zoom_percent / 100.0))
+        target_h = max(1, int(self.viewport().height() * self._zoom_percent / 100.0))
         scaled  = pixmap.scaled(
-            self.viewport().size(),
-            Qt.KeepAspectRatio,
-            Qt.SmoothTransformation
+            target_w,
+            target_h,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation
         )
+        self._label.setText("")
         self._label.setPixmap(scaled)
 
     def resizeEvent(self, event):
@@ -125,7 +141,7 @@ class HistogramWidget(QWidget):
         grad.setColorAt(0.0, QColor("#00c8ff"))
         grad.setColorAt(1.0, QColor("#0057ff"))
         painter.setBrush(QBrush(grad))
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
 
         for i in range(256):
             bh = int((self._hist[i] / mx) * (h - 4))
