@@ -66,6 +66,7 @@ class MainWindow(QMainWindow):
         self._history_labels: list[str] = []
         self._redo_stack: list[np.ndarray] = []
         self._redo_labels: list[str] = []
+        self._saved_state: np.ndarray | None = None
         self._worker: ProcessingWorker | None = None
         self._current_path: str = ""
         self._loaded_metadata: dict[str, str] = {}
@@ -522,6 +523,14 @@ class MainWindow(QMainWindow):
             f"background: {GREEN if active else TEXT3}; border-radius: 3px;"
         )
 
+    def _sync_dirty_state(self) -> None:
+        if self._current is None:
+            self.setWindowModified(False)
+            return
+
+        is_dirty = self._saved_state is None or not np.array_equal(self._current, self._saved_state)
+        self.setWindowModified(is_dirty)
+
     def _sync_view_zoom(self) -> None:
         for canvas in self._all_canvases():
             canvas.set_display_zoom(self._view_zoom_percent)
@@ -658,6 +667,9 @@ class MainWindow(QMainWindow):
             self._history.clear()
             self._history_labels.clear()
             self._pipeline.clear()
+            self._redo_stack.clear()
+            self._redo_labels.clear()
+            self._saved_state = self._current.copy()
             self._zoom_base = None
             self._zoom_factor = 1.0
             self._view_zoom_percent = 100
@@ -673,6 +685,7 @@ class MainWindow(QMainWindow):
                 f"Loaded: {os.path.basename(path)}  ({result.metadata.get('Width', '?')} × {result.metadata.get('Height', '?')})  Format: {result.format}",
                 True,
             )
+            self._sync_dirty_state()
         except Exception as exc:
             QMessageBox.critical(self, "Unexpected Error", str(exc))
 
@@ -694,6 +707,8 @@ class MainWindow(QMainWindow):
         if err:
             QMessageBox.critical(self, "Save Error", err)
         else:
+            self._saved_state = self._current.copy()
+            self._sync_dirty_state()
             self._set_status(f"Saved: {os.path.basename(path)}", True)
 
     # ------------------------------------------------------------- state ----
@@ -732,6 +747,7 @@ class MainWindow(QMainWindow):
         self._update_canvases()
         self._update_stats_and_metadata(self._loaded_metadata, self._current_path)
         self._sync_view_zoom()
+        self._sync_dirty_state()
         self._set_status(f"Undone: {label}", False)
 
     def _redo(self):
@@ -755,6 +771,7 @@ class MainWindow(QMainWindow):
         self._update_canvases()
         self._update_stats_and_metadata(self._loaded_metadata, self._current_path)
         self._sync_view_zoom()
+        self._sync_dirty_state()
         self._set_status(f"Redone: {redo_label}", False)
 
     def _reset_to_original(self):
@@ -769,6 +786,7 @@ class MainWindow(QMainWindow):
         self._update_canvases()
         self._update_stats_and_metadata(self._loaded_metadata, self._current_path)
         self._sync_view_zoom()
+        self._sync_dirty_state()
         self._set_status("Reset to original.", False)
 
     def _update_canvases(self):
@@ -805,6 +823,7 @@ class MainWindow(QMainWindow):
         self._update_canvases()
         self._update_stats_and_metadata(self._loaded_metadata, self._current_path)
         self._progress.setVisible(False)
+        self._sync_dirty_state()
         self._set_status(f"Done: {label}  -  {result.shape[1]}×{result.shape[0]} px", True)
 
     def _on_worker_error(self, msg: str):
@@ -813,8 +832,54 @@ class MainWindow(QMainWindow):
             self._current = self._history.pop()
             if self._history_labels:
                 self._history_labels.pop()
+        self._sync_dirty_state()
         QMessageBox.critical(self, "Processing Error", msg)
         self._set_status("Error during processing.", False)
+
+    def closeEvent(self, event):
+        if self.isWindowModified() and self._current is not None:
+            choice = QMessageBox.question(
+                self,
+                "Unsaved Changes",
+                "You have unsaved changes. Do you want to save before closing?",
+                QMessageBox.StandardButton.Save
+                | QMessageBox.StandardButton.Discard
+                | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Save,
+            )
+
+            if choice == QMessageBox.StandardButton.Save:
+                if not self._save_before_close():
+                    event.ignore()
+                    return
+            elif choice == QMessageBox.StandardButton.Cancel:
+                event.ignore()
+                return
+
+        event.accept()
+
+    def _save_before_close(self) -> bool:
+        if self._current is None:
+            return True
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Processed Image",
+            self._current_path or "",
+            "PNG Image (*.png);;JPEG Image (*.jpg);;BMP Image (*.bmp)",
+        )
+        if not path:
+            return False
+
+        err = save_image(self._current, path)
+        if err:
+            QMessageBox.critical(self, "Save Error", err)
+            return False
+
+        self._saved_state = self._current.copy()
+        self._sync_dirty_state()
+        self._set_status(f"Saved: {os.path.basename(path)}", True)
+        return True
 
     def _on_apply_zoom(self, step: float, method: str):
         if not self._require_image():
