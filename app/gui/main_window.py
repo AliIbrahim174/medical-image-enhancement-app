@@ -143,35 +143,6 @@ class MainWindow(QMainWindow):
             layout.addWidget(self._toolbar_button(label, action))
 
         layout.addWidget(self._separator())
-
-        view_box = QWidget()
-        view_box.setStyleSheet(f"border: 1px solid {ACCENT_DIM}; border-radius: 5px;")
-        view_layout = QHBoxLayout(view_box)
-        view_layout.setContentsMargins(0, 0, 0, 0)
-        view_layout.setSpacing(0)
-
-        self._view_toggle_group = QButtonGroup(self)
-        self._view_toggle_group.setExclusive(True)
-        self._view_buttons: list[QPushButton] = []
-        for index, label in enumerate(["Single", "Before/After", "Edge"]):
-            btn = QPushButton(label)
-            btn.setCheckable(True)
-            btn.clicked.connect(lambda _checked=False, i=index: self._switch_view(i))
-            btn.setStyleSheet(
-                f"QPushButton {{ padding: 4px 10px; font-size: 10.5px; color: {TEXT2};"
-                f" background: transparent; border: none; border-right: 1px solid {ACCENT_DIM}; }}"
-                f"QPushButton:hover {{ color: {TEXT1}; background: {ACCENT_DIM}; }}"
-                f"QPushButton:checked {{ color: {ACCENT}; background: {ACCENT_DIM}; }}"
-            )
-            self._view_toggle_group.addButton(btn)
-            self._view_buttons.append(btn)
-            view_layout.addWidget(btn)
-        if self._view_buttons:
-            self._view_buttons[0].setChecked(True)
-            last = self._view_buttons[-1]
-            last.setStyleSheet(last.styleSheet().replace(f"border-right: 1px solid {ACCENT_DIM};", ""))
-
-        layout.addWidget(view_box)
         layout.addStretch(1)
         return bar
 
@@ -490,7 +461,7 @@ class MainWindow(QMainWindow):
         self._status_zoom.setStyleSheet(f"font-family: 'JetBrains Mono', monospace; color: {TEXT1};")
         self._status_memory = QLabel("—")
         self._status_memory.setStyleSheet(f"font-family: 'JetBrains Mono', monospace; color: {TEXT1};")
-        self._status_footer = QLabel("Cairo University · BioEng")
+        self._status_footer = QLabel("Team 8 - CUFE - BDE - DIP spring 26")
         self._status_footer.setStyleSheet(f"color: {TEXT3};")
 
         host = QWidget()
@@ -621,8 +592,6 @@ class MainWindow(QMainWindow):
 
     def _switch_view(self, index: int) -> None:
         self._canvas_tabs.setCurrentIndex(index)
-        for i, button in enumerate(self._view_buttons):
-            button.setChecked(i == index)
 
     def _update_view_zoom(self, value: int) -> None:
         self._view_zoom_percent = value
@@ -906,5 +875,5 @@ class MainWindow(QMainWindow):
             "• Sobel &amp; Prewitt edge detection (from scratch)<br>"
             "• Local Histogram Equalization (from scratch)<br>"
             "• Sequential Enhancement Pipeline with undo<br><br>"
-            "Cairo University — Biomedical Engineering",
+            "Team 8 - CUFE - BDE - DIP spring 26",
         )
