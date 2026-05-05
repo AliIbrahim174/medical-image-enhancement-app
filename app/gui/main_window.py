@@ -32,7 +32,7 @@ from ..DIP.histogram_equalization import local_histogram_equalization
 from ..DIP.median import median_filter_scratch
 from ..DIP.smoothing import apply_linear_filter, make_average_kernel, make_gaussian_kernel
 from ..DIP.zoom import bilinear_zoom, nearest_neighbor_zoom
-from ..core.image_processor import ensure_gray
+from ..DIP.utils import ensure_gray
 from ..core.styles import (
     ACCENT,
     ACCENT_DIM,

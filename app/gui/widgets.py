@@ -8,7 +8,7 @@ from PyQt6.QtGui import (
     QImage, QPixmap, QPainter, QColor, QLinearGradient, QBrush
 )
 
-from ..core import image_processor as ip
+from ..DIP.utils import ensure_gray
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -193,7 +193,7 @@ class HistogramWidget(QWidget):
 
     def set_array(self, arr: np.ndarray) -> None:
         """Compute and redraw the histogram for the given image array."""
-        gray = ip.ensure_gray(arr)
+        gray = ensure_gray(arr)
         hist = np.zeros(256, dtype=np.int64)
         for val in gray.flatten():
             hist[val] += 1
