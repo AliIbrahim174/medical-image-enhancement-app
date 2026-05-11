@@ -3,12 +3,18 @@
 import numpy as np
 
 from PyQt6.QtWidgets import QScrollArea, QLabel, QWidget
-from PyQt6.QtCore import Qt, pyqtSignal, QRect, QPoint
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import (
-    QImage, QPixmap, QPainter, QPen, QColor, QLinearGradient, QBrush
+    QImage,
+    QPixmap,
+    QPainter,
+    QPen,
+    QColor,
+    QLinearGradient,
+    QBrush,
 )
 
-from ..core import image_processor as ip
+from ..DIP.utils import ensure_gray
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -22,6 +28,9 @@ class ImageCanvas(QScrollArea):
     preserving the aspect ratio.
     """
 
+    # Phase 2 / Member 2: emitted when the user clicks the Fourier spectrum image.
+    image_clicked = pyqtSignal(int, int)  # row, col in original image-array coordinates
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._label = QLabel()
@@ -33,14 +42,20 @@ class ImageCanvas(QScrollArea):
         self.setWidget(self._label)
         self.setWidgetResizable(True)
         self.setStyleSheet("background: #080a0d; border: none;")
+
         self._array: np.ndarray | None = None
         self._zoom_percent = 100
         self._mode: str = "none"  # 'none', 'pan', 'annotate'
         self._annotations: list[tuple[float, float]] = []  # relative coords (x_ratio, y_ratio)
+
         self._pan_active = False
         self._pan_start = None
         self._h_start = 0
         self._v_start = 0
+
+        # Phase 2 / Member 2: when True, mouse clicks become image row/col coordinates.
+        self._click_reporting = False
+
         self.setMouseTracking(True)
         self.viewport().setMouseTracking(True)
         self._label.setMouseTracking(True)
@@ -58,6 +73,7 @@ class ImageCanvas(QScrollArea):
 
     def clear(self) -> None:
         self._array = None
+        self._annotations.clear()
         self._label.setPixmap(QPixmap())
         self._label.setText("Open or drop an image")
 
@@ -68,7 +84,95 @@ class ImageCanvas(QScrollArea):
     def fit_to_window(self) -> None:
         self.set_display_zoom(100)
 
+    # Phase 2 / Member 2: enable/disable direct click selection on the Fourier spectrum.
+    def set_click_reporting(self, enabled: bool) -> None:
+        """Enable/disable emitting image_clicked(row, col) on left click."""
+        self._click_reporting = bool(enabled)
+        if enabled:
+            self.viewport().setCursor(Qt.CursorShape.CrossCursor)
+        elif self._mode == "none":
+            self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
+
+    # Phase 2 / Member 2: remove notch markers from the Fourier spectrum canvas.
+    def clear_markers(self) -> None:
+        """Clear annotation markers painted on the canvas."""
+        self._annotations.clear()
+        self._refresh()
+
+    # Phase 2 / Member 2: add a visible marker at an original image-array pixel position.
+    def add_marker_at_pixel(self, row: int, col: int) -> None:
+        """Add marker using original image pixel coordinates."""
+        if self._array is None:
+            return
+
+        h, w = self._array.shape[:2]
+        if h <= 0 or w <= 0:
+            return
+
+        rx = col / max(1, w - 1)
+        ry = row / max(1, h - 1)
+        self._annotations.append((rx, ry))
+        self._refresh()
+
+    # Phase 2 / Members 2 and 3: map mouse click on scaled Qt pixmap to true array row/col.
+    def _event_to_array_pixel(self, event) -> tuple[int, int] | None:
+        """Map mouse event on scaled pixmap back to original array row/col."""
+        if self._array is None:
+            return None
+
+        pix = self._label.pixmap()
+        if pix is None or pix.isNull():
+            return None
+
+        viewport_pos = event.position().toPoint()
+        label_pos = self._label.mapFrom(self.viewport(), viewport_pos)
+
+        pix_w, pix_h = pix.width(), pix.height()
+        offset_x = max(0, (self._label.width() - pix_w) // 2)
+        offset_y = max(0, (self._label.height() - pix_h) // 2)
+
+        x = label_pos.x() - offset_x
+        y = label_pos.y() - offset_y
+
+        if not (0 <= x < pix_w and 0 <= y < pix_h):
+            return None
+
+        arr_h, arr_w = self._array.shape[:2]
+        col = int(round(x * (arr_w - 1) / max(1, pix_w - 1)))
+        row = int(round(y * (arr_h - 1) / max(1, pix_h - 1)))
+
+        row = max(0, min(arr_h - 1, row))
+        col = max(0, min(arr_w - 1, col))
+        return row, col
+
     # ── Internal ──────────────────────────────────────────────────────────────
+
+    def _array_to_qimage(self, arr: np.ndarray) -> QImage:
+        """Convert a grayscale/RGB numpy array to QImage."""
+        if arr.ndim == 2:
+            h, w = arr.shape
+            arr8 = arr.astype(np.uint8)
+            return QImage(
+                arr8.tobytes(),
+                w,
+                h,
+                w,
+                QImage.Format.Format_Grayscale8,
+            ).copy()
+
+        h, w = arr.shape[:2]
+        arr3 = arr[:, :, :3].astype(np.uint8)
+        return QImage(
+            arr3.tobytes(),
+            w,
+            h,
+            w * 3,
+            QImage.Format.Format_RGB888,
+        ).copy()
+
+    def _draw_overlays(self, display: QPixmap) -> None:
+        """Hook for subclasses to draw additional overlays on the scaled pixmap."""
+        return
 
     def _refresh(self) -> None:
         if self._array is None:
@@ -76,29 +180,21 @@ class ImageCanvas(QScrollArea):
             self._label.setText("Open or drop an image")
             return
 
-        arr = self._array
-        if arr.ndim == 2:
-            h, w = arr.shape
-            qimg = QImage(
-                arr.astype(np.uint8).tobytes(), w, h, w,
-                QImage.Format.Format_Grayscale8
-            )
-        else:
-            h, w = arr.shape[:2]
-            arr3 = arr[:, :, :3].astype(np.uint8)
-            qimg = QImage(arr3.tobytes(), w, h, w * 3, QImage.Format.Format_RGB888)
+        qimg = self._array_to_qimage(self._array)
+        pixmap = QPixmap.fromImage(qimg)
 
-        pixmap  = QPixmap.fromImage(qimg)
         target_w = max(1, int(self.viewport().width() * self._zoom_percent / 100.0))
         target_h = max(1, int(self.viewport().height() * self._zoom_percent / 100.0))
-        scaled  = pixmap.scaled(
+        scaled = pixmap.scaled(
             target_w,
             target_h,
             Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation
+            Qt.TransformationMode.SmoothTransformation,
         )
-        # Paint annotations onto a copy of the scaled pixmap
+
+        # Paint annotations and subclass overlays onto a copy of the scaled pixmap.
         display = QPixmap(scaled)
+
         if self._annotations:
             painter = QPainter(display)
             painter.setPen(QColor("#ff4d6d"))
@@ -109,6 +205,8 @@ class ImageCanvas(QScrollArea):
                 painter.drawEllipse(x - 4, y - 4, 8, 8)
             painter.end()
 
+        self._draw_overlays(display)
+
         self._label.setText("")
         self._label.setPixmap(display)
 
@@ -117,9 +215,13 @@ class ImageCanvas(QScrollArea):
         self._refresh()
 
     # ----------------- Interaction modes: pan & annotate -----------------
+
     def set_interaction_mode(self, mode: str) -> None:
         self._mode = mode or "none"
-        if self._mode == "pan":
+
+        if self._click_reporting:
+            self.viewport().setCursor(Qt.CursorShape.CrossCursor)
+        elif self._mode == "pan":
             self.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
         elif self._mode == "annotate":
             self.viewport().setCursor(Qt.CursorShape.CrossCursor)
@@ -127,6 +229,14 @@ class ImageCanvas(QScrollArea):
             self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
 
     def mousePressEvent(self, event):
+        # Phase 2 / Member 2: Fourier spectrum click selection for notch filtering.
+        if self._click_reporting and event.button() == Qt.MouseButton.LeftButton:
+            pixel = self._event_to_array_pixel(event)
+            if pixel is not None:
+                row, col = pixel
+                self.image_clicked.emit(row, col)
+                return
+
         if self._mode == "pan" and event.button() == Qt.MouseButton.LeftButton:
             self._pan_active = True
             self._pan_start = event.position().toPoint()
@@ -136,21 +246,12 @@ class ImageCanvas(QScrollArea):
             return
 
         if self._mode == "annotate" and event.button() == Qt.MouseButton.LeftButton:
-            # map viewport coords to label coordinates
-            vp_pos = event.position().toPoint()
-            label_pos = self._label.mapFrom(self.viewport(), vp_pos)
-            pix = self._label.pixmap()
-            if pix is None:
-                return
-            pw, ph = pix.width(), pix.height()
-            # compute offset due to centering inside label
-            ox = max(0, (self._label.width() - pw) // 2)
-            oy = max(0, (self._label.height() - ph) // 2)
-            x = label_pos.x() - ox
-            y = label_pos.y() - oy
-            if 0 <= x < pw and 0 <= y < ph:
-                rx = x / pw
-                ry = y / ph
+            pixel = self._event_to_array_pixel(event)
+            if pixel is not None and self._array is not None:
+                row, col = pixel
+                h, w = self._array.shape[:2]
+                rx = col / max(1, w - 1)
+                ry = row / max(1, h - 1)
                 self._annotations.append((rx, ry))
                 self._refresh()
             return
@@ -165,6 +266,7 @@ class ImageCanvas(QScrollArea):
             self.horizontalScrollBar().setValue(self._h_start - dx)
             self.verticalScrollBar().setValue(self._v_start - dy)
             return
+
         return super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
@@ -172,7 +274,111 @@ class ImageCanvas(QScrollArea):
             self._pan_active = False
             self.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
             return
+
         return super().mouseReleaseEvent(event)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  ROI IMAGE CANVAS
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ROIImageCanvas(ImageCanvas):
+    """ImageCanvas subclass that lets the user drag a rectangular ROI."""
+
+    # Phase 2 / Member 3: x1, y1, x2, y2 in original image pixel coordinates.
+    roi_selected = pyqtSignal(int, int, int, int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._roi_mode = False
+        self._roi_start_pixel: tuple[int, int] | None = None  # row, col
+        self._roi_end_pixel: tuple[int, int] | None = None    # row, col
+
+    def set_roi_mode(self, active: bool) -> None:
+        """Enable/disable ROI drag selection."""
+        self._roi_mode = bool(active)
+        self._roi_start_pixel = None
+        self._roi_end_pixel = None
+        self.viewport().setCursor(
+            Qt.CursorShape.CrossCursor if self._roi_mode else Qt.CursorShape.ArrowCursor
+        )
+        self._refresh()
+
+    def _draw_overlays(self, display: QPixmap) -> None:
+        """Draw the current ROI rectangle on the scaled display pixmap."""
+        if self._roi_start_pixel is None or self._roi_end_pixel is None:
+            return
+        if self._array is None:
+            return
+
+        h, w = self._array.shape[:2]
+        if h <= 0 or w <= 0:
+            return
+
+        r1, c1 = self._roi_start_pixel
+        r2, c2 = self._roi_end_pixel
+
+        x1 = int(c1 * (display.width() - 1) / max(1, w - 1))
+        y1 = int(r1 * (display.height() - 1) / max(1, h - 1))
+        x2 = int(c2 * (display.width() - 1) / max(1, w - 1))
+        y2 = int(r2 * (display.height() - 1) / max(1, h - 1))
+
+        painter = QPainter(display)
+        pen = QPen(QColor("#00c8ff"), 2)
+        pen.setStyle(Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRect(min(x1, x2), min(y1, y2), abs(x2 - x1), abs(y2 - y1))
+        painter.end()
+
+    def mousePressEvent(self, event):
+        if self._roi_mode and event.button() == Qt.MouseButton.LeftButton:
+            pixel = self._event_to_array_pixel(event)
+            if pixel is not None:
+                self._roi_start_pixel = pixel
+                self._roi_end_pixel = pixel
+                self._refresh()
+                return
+
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._roi_mode and self._roi_start_pixel is not None:
+            pixel = self._event_to_array_pixel(event)
+            if pixel is not None:
+                self._roi_end_pixel = pixel
+                self._refresh()
+                return
+
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._roi_mode and self._roi_start_pixel is not None:
+            pixel = self._event_to_array_pixel(event)
+            if pixel is not None:
+                self._roi_end_pixel = pixel
+
+            if self._roi_end_pixel is not None:
+                r1, c1 = self._roi_start_pixel
+                r2, c2 = self._roi_end_pixel
+
+                x1 = min(c1, c2)
+                y1 = min(r1, r2)
+                x2 = max(c1, c2)
+                y2 = max(r1, r2)
+
+                # Ignore tiny accidental clicks.
+                if (x2 - x1) >= 2 and (y2 - y1) >= 2:
+                    self.roi_selected.emit(x1, y1, x2, y2)
+
+            self._roi_mode = False
+            self._roi_start_pixel = None
+            self._roi_end_pixel = None
+            self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
+            self._refresh()
+            return
+
+        super().mouseReleaseEvent(event)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -193,10 +399,23 @@ class HistogramWidget(QWidget):
 
     def set_array(self, arr: np.ndarray) -> None:
         """Compute and redraw the histogram for the given image array."""
-        gray = ip.ensure_gray(arr)
+        gray = ensure_gray(arr)
         hist = np.zeros(256, dtype=np.int64)
+
         for val in gray.flatten():
             hist[val] += 1
+
+        self._hist = hist
+        self.update()
+
+    # Phase 2 / Member 3: directly display a precomputed ROI histogram.
+    def set_hist(self, hist: np.ndarray) -> None:
+        """Set a precomputed 256-bin histogram and redraw."""
+        hist = np.asarray(hist, dtype=np.int64)
+
+        if hist.shape[0] != 256:
+            raise ValueError("HistogramWidget.set_hist expects a 256-bin histogram.")
+
         self._hist = hist
         self.update()
 
@@ -213,7 +432,7 @@ class HistogramWidget(QWidget):
             return
 
         bar_w = w / 256.0
-        grad  = QLinearGradient(0, h, 0, 0)
+        grad = QLinearGradient(0, h, 0, 0)
         grad.setColorAt(0.0, QColor("#00c8ff"))
         grad.setColorAt(1.0, QColor("#0057ff"))
         painter.setBrush(QBrush(grad))
@@ -221,60 +440,5 @@ class HistogramWidget(QWidget):
 
         for i in range(256):
             bh = int((self._hist[i] / mx) * (h - 4))
-            x  = int(i * bar_w)
+            x = int(i * bar_w)
             painter.drawRect(x, h - bh, max(1, int(bar_w)), bh)
-
-#wessam
-class ROIImageCanvas(ImageCanvas):
-    """ImageCanvas subclass that lets the user drag a rectangular ROI."""
-    roi_selected = pyqtSignal(int, int, int, int)   # x1, y1, x2, y2
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._roi_start: QPoint | None = None
-        self._roi_end:   QPoint | None = None
-        self._drawing = False
-
-    def set_roi_mode(self, active: bool):
-        self._drawing = active
-        self._roi_start = self._roi_end = None
-        self._refresh()
-
-    def mousePressEvent(self, event):
-        if self._drawing:
-            self._roi_start = event.position().toPoint()
-            self._roi_end   = self._roi_start
-        else:
-            super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        if self._drawing and self._roi_start:
-            self._roi_end = event.position().toPoint()
-            self.viewport().update()   # trigger repaint for rubber band
-        else:
-            super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event):
-        if self._drawing and self._roi_start:
-            self._roi_end = event.position().toPoint()
-            # Convert widget coords → image pixel coords via zoom factor
-            self.roi_selected.emit(
-                min(self._roi_start.x(), self._roi_end.x()),
-                min(self._roi_start.y(), self._roi_end.y()),
-                max(self._roi_start.x(), self._roi_end.x()),
-                max(self._roi_start.y(), self._roi_end.y()),
-            )
-            self._drawing = False
-        else:
-            super().mouseReleaseEvent(event)
-
-    def paintEvent(self, event):
-        super().paintEvent(event)
-        if self._roi_start and self._roi_end:
-            painter = QPainter(self.viewport())
-            pen = QPen(QColor(0, 200, 255), 1.5)
-            pen.setStyle(Qt.PenStyle.DashLine)
-            painter.setPen(pen)
-            rect = QRect(self._roi_start, self._roi_end)
-            painter.drawRect(rect)
-            painter.end()
