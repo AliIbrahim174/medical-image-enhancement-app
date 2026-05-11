@@ -62,6 +62,57 @@ def conjugate_notch_center(shape: tuple[int, int], center: tuple[int, int]) -> t
     return int(mirror_row), int(mirror_col)
 
 
+def snap_to_bright_peak(
+    spectrum: np.ndarray,
+    clicked: tuple[int, int],
+    search_radius: int = 12,
+    dc_exclusion_radius: int = 10,
+) -> tuple[int, int]:
+    """Snap a clicked point to a nearby bright spectral peak.
+
+    This improves usability by allowing approximate clicks near spikes.
+    A local search window is scanned and the best candidate is selected
+    by balancing intensity with proximity to the click.
+    """
+    if spectrum.ndim != 2:
+        raise ValueError("spectrum must be a 2-D array")
+
+    h, w = spectrum.shape
+    row, col = clicked
+    row = int(max(0, min(h - 1, row)))
+    col = int(max(0, min(w - 1, col)))
+
+    r = max(1, int(search_radius))
+    r0 = max(0, row - r)
+    r1 = min(h - 1, row + r)
+    c0 = max(0, col - r)
+    c1 = min(w - 1, col + r)
+
+    crow, ccol = h // 2, w // 2
+    exclude_r2 = float(max(0, dc_exclusion_radius) ** 2)
+
+    best_score = float("-inf")
+    best = (row, col)
+
+    for rr in range(r0, r1 + 1):
+        for cc in range(c0, c1 + 1):
+            # Skip DC neighborhood; those frequencies are rarely periodic noise spikes.
+            dc_dist2 = float((rr - crow) ** 2 + (cc - ccol) ** 2)
+            if dc_dist2 <= exclude_r2:
+                continue
+
+            intensity = float(spectrum[rr, cc])
+            dist = float(np.hypot(rr - row, cc - col))
+
+            # Prefer bright peaks near the click.
+            score = intensity - 2.0 * dist
+            if score > best_score:
+                best_score = score
+                best = (rr, cc)
+
+    return int(best[0]), int(best[1])
+
+
 def _distance_grid(shape: tuple[int, int], center: tuple[int, int]) -> np.ndarray:
     """Compute Euclidean distance from every frequency pixel to center."""
     h, w = shape

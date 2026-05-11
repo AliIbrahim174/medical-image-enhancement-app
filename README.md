@@ -123,6 +123,10 @@ python main.py
   - JPEG
   - BMP
 
+## Additional Documentation
+
+- Fourier workflow and usability changes: [doc/FOURIER_IMPROVEMENTS.md](doc/FOURIER_IMPROVEMENTS.md)
+
 ## Course Context
 
 This repository appears to be developed for a Medical Image Processing and Computer Vision course project at Cairo University (Biomedical Engineering).

@@ -45,8 +45,16 @@ class ImageCanvas(QScrollArea):
 
         self._array: np.ndarray | None = None
         self._zoom_percent = 100
-        self._mode: str = "none"  # 'none', 'pan', 'annotate'
-        self._annotations: list[tuple[float, float]] = []  # relative coords (x_ratio, y_ratio)
+        self._mode: str = "none"  # 'none', 'pan', 'marker', 'eraser', 'ruler'
+        
+        # Annotation strokes: each stroke is a dict with 'points', 'color', 'width', 'type'
+        self._strokes: list[dict] = []
+        self._current_stroke: list[tuple[float, float]] = []  # In-progress stroke (relative coords)
+        
+        # Drawing settings
+        self._pen_color = "#ff4d6d"  # Default red
+        self._pen_width = 2
+        self._eraser_width = 15
 
         self._pan_active = False
         self._pan_start = None
@@ -73,7 +81,8 @@ class ImageCanvas(QScrollArea):
 
     def clear(self) -> None:
         self._array = None
-        self._annotations.clear()
+        self._strokes.clear()
+        self._current_stroke.clear()
         self._label.setPixmap(QPixmap())
         self._label.setText("Open or drop an image")
 
@@ -95,13 +104,14 @@ class ImageCanvas(QScrollArea):
 
     # Phase 2 / Member 2: remove notch markers from the Fourier spectrum canvas.
     def clear_markers(self) -> None:
-        """Clear annotation markers painted on the canvas."""
-        self._annotations.clear()
+        """Clear all annotation strokes."""
+        self._strokes.clear()
+        self._current_stroke.clear()
         self._refresh()
 
     # Phase 2 / Member 2: add a visible marker at an original image-array pixel position.
     def add_marker_at_pixel(self, row: int, col: int) -> None:
-        """Add marker using original image pixel coordinates."""
+        """Add marker (small circle) using original image pixel coordinates."""
         if self._array is None:
             return
 
@@ -111,7 +121,29 @@ class ImageCanvas(QScrollArea):
 
         rx = col / max(1, w - 1)
         ry = row / max(1, h - 1)
-        self._annotations.append((rx, ry))
+        
+        # Add as a single-point stroke (marker)
+        self._strokes.append({
+            "points": [(rx, ry)],
+            "color": "#ff4d6d",
+            "width": 0,  # 0 width means draw as circle marker
+            "type": "marker"
+        })
+        self._refresh()
+
+    # Drawing control API
+    def set_pen_color(self, color_hex: str) -> None:
+        """Set the pen/marker color (e.g., '#ff4d6d')."""
+        self._pen_color = color_hex
+
+    def set_pen_width(self, width: int) -> None:
+        """Set the pen stroke width in pixels."""
+        self._pen_width = max(1, int(width))
+
+    def clear_strokes(self) -> None:
+        """Clear all drawn strokes."""
+        self._strokes.clear()
+        self._current_stroke.clear()
         self._refresh()
 
     # Phase 2 / Members 2 and 3: map mouse click on scaled Qt pixmap to true array row/col.
@@ -195,20 +227,92 @@ class ImageCanvas(QScrollArea):
         # Paint annotations and subclass overlays onto a copy of the scaled pixmap.
         display = QPixmap(scaled)
 
-        if self._annotations:
+        if self._strokes or self._current_stroke:
             painter = QPainter(display)
-            painter.setPen(QColor("#ff4d6d"))
-            painter.setBrush(QColor("#ff4d6d"))
-            for rx, ry in self._annotations:
-                x = int(rx * display.width())
-                y = int(ry * display.height())
-                painter.drawEllipse(x - 4, y - 4, 8, 8)
+            
+            # Draw saved strokes (only pen and marker types, skip eraser)
+            for stroke in self._strokes:
+                if stroke["type"] == "marker":
+                    # Draw as small circle
+                    painter.setPen(QColor(stroke["color"]))
+                    painter.setBrush(QColor(stroke["color"]))
+                    for rx, ry in stroke["points"]:
+                        x = int(rx * display.width())
+                        y = int(ry * display.height())
+                        painter.drawEllipse(x - 4, y - 4, 8, 8)
+                elif stroke["type"] != "eraser":  # Skip eraser strokes - don't render them
+                    # Pen stroke
+                    painter.setPen(QPen(QColor(stroke["color"]), stroke["width"], Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+                    if len(stroke["points"]) > 1:
+                        for i in range(len(stroke["points"]) - 1):
+                            rx1, ry1 = stroke["points"][i]
+                            rx2, ry2 = stroke["points"][i + 1]
+                            x1 = int(rx1 * display.width())
+                            y1 = int(ry1 * display.height())
+                            x2 = int(rx2 * display.width())
+                            y2 = int(ry2 * display.height())
+                            painter.drawLine(x1, y1, x2, y2)
+            
+            # Draw current in-progress stroke
+            if self._current_stroke and self._mode != "eraser":
+                # Only draw if NOT eraser mode
+                painter.setPen(QPen(QColor(self._pen_color), self._pen_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+                
+                if len(self._current_stroke) > 1:
+                    for i in range(len(self._current_stroke) - 1):
+                        rx1, ry1 = self._current_stroke[i]
+                        rx2, ry2 = self._current_stroke[i + 1]
+                        x1 = int(rx1 * display.width())
+                        y1 = int(ry1 * display.height())
+                        x2 = int(rx2 * display.width())
+                        y2 = int(ry2 * display.height())
+                        painter.drawLine(x1, y1, x2, y2)
+            
             painter.end()
 
         self._draw_overlays(display)
 
         self._label.setText("")
         self._label.setPixmap(display)
+
+    def _stroke_intersects_point(self, stroke: dict, px: float, py: float, threshold: float = 0.05) -> bool:
+        """Check if a stroke passes near a point. px, py in normalized coords (0-1)."""
+        for sx, sy in stroke["points"]:
+            dist_x = abs(sx - px)
+            dist_y = abs(sy - py)
+            if dist_x < threshold and dist_y < threshold:
+                return True
+        return False
+
+    def _apply_eraser_stroke(self, eraser_stroke: dict) -> None:
+        """Remove pen strokes that intersect with the eraser stroke."""
+        if not eraser_stroke["points"]:
+            return
+        
+        threshold = 0.08  # Proximity threshold for intersection detection (increased for better erasing)
+        remaining_strokes = []
+        
+        for stroke in self._strokes:
+            if stroke["type"] == "eraser":
+                # Keep eraser strokes (for now, though they won't be rendered)
+                remaining_strokes.append(stroke)
+            else:
+                # Check if this pen stroke intersects with eraser
+                intersects = False
+                for ex, ey in eraser_stroke["points"]:
+                    for sx, sy in stroke["points"]:
+                        dist = ((sx - ex) ** 2 + (sy - ey) ** 2) ** 0.5
+                        if dist < threshold:
+                            intersects = True
+                            break
+                    if intersects:
+                        break
+                
+                # Only keep stroke if it doesn't intersect with eraser
+                if not intersects:
+                    remaining_strokes.append(stroke)
+        
+        self._strokes = remaining_strokes
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -223,7 +327,11 @@ class ImageCanvas(QScrollArea):
             self.viewport().setCursor(Qt.CursorShape.CrossCursor)
         elif self._mode == "pan":
             self.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
-        elif self._mode == "annotate":
+        elif self._mode == "marker":
+            self.viewport().setCursor(Qt.CursorShape.CrossCursor)
+        elif self._mode == "eraser":
+            self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
+        elif self._mode == "ruler":
             self.viewport().setCursor(Qt.CursorShape.CrossCursor)
         else:
             self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
@@ -245,15 +353,14 @@ class ImageCanvas(QScrollArea):
             self.viewport().setCursor(Qt.CursorShape.ClosedHandCursor)
             return
 
-        if self._mode == "annotate" and event.button() == Qt.MouseButton.LeftButton:
+        if self._mode in ("marker", "eraser") and event.button() == Qt.MouseButton.LeftButton:
             pixel = self._event_to_array_pixel(event)
             if pixel is not None and self._array is not None:
                 row, col = pixel
                 h, w = self._array.shape[:2]
                 rx = col / max(1, w - 1)
                 ry = row / max(1, h - 1)
-                self._annotations.append((rx, ry))
-                self._refresh()
+                self._current_stroke = [(rx, ry)]
             return
 
         return super().mousePressEvent(event)
@@ -267,12 +374,47 @@ class ImageCanvas(QScrollArea):
             self.verticalScrollBar().setValue(self._v_start - dy)
             return
 
+        # Handle drawing/eraser strokes
+        if self._mode in ("marker", "eraser") and self._current_stroke and self._array is not None:
+            pixel = self._event_to_array_pixel(event)
+            if pixel is not None:
+                row, col = pixel
+                h, w = self._array.shape[:2]
+                rx = col / max(1, w - 1)
+                ry = row / max(1, h - 1)
+                self._current_stroke.append((rx, ry))
+                self._refresh()
+            return
+
         return super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
         if self._mode == "pan" and event.button() == Qt.MouseButton.LeftButton:
             self._pan_active = False
             self.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
+            return
+
+        # Finalize drawing/eraser stroke
+        if self._mode in ("marker", "eraser") and event.button() == Qt.MouseButton.LeftButton:
+            if self._current_stroke:
+                stroke_type = "eraser" if self._mode == "eraser" else "pen"
+                eraser_stroke = {
+                    "points": self._current_stroke[:],
+                    "color": self._pen_color,
+                    "width": self._eraser_width if self._mode == "eraser" else self._pen_width,
+                    "type": stroke_type
+                }
+                
+                # If eraser, apply the eraser effect to remove intersecting pen strokes
+                if self._mode == "eraser":
+                    self._apply_eraser_stroke(eraser_stroke)
+                    # Don't store eraser strokes - just use them to erase pen strokes
+                else:
+                    # Store pen strokes normally
+                    self._strokes.append(eraser_stroke)
+                
+                self._current_stroke.clear()
+                self._refresh()
             return
 
         return super().mouseReleaseEvent(event)
