@@ -371,60 +371,6 @@ class MainWindow(QMainWindow):
             layout.addWidget(pane)
         return widget
 
-    # Phase 2: tab that displays log-scaled Fourier magnitude spectrum.
-    def _build_fourier_tab(self) -> QWidget:
-        widget = QWidget()
-        widget.setStyleSheet("background: #0c0d11;")
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(2, 2, 2, 2)
-        layout.setSpacing(2)
-
-        header = QLabel("Fourier magnitude spectrum — click a bright periodic-noise spike")
-        header.setStyleSheet(
-            f"padding: 5px 10px; background: {TEXT0}; border-bottom: 1px solid {ACCENT_DIM};"
-            f"font-size: 10px; color: {TEXT2};"
-        )
-
-        self._canvas_spectrum = ImageCanvas()
-        self._canvas_spectrum.set_click_reporting(True)
-        self._canvas_spectrum.image_clicked.connect(self._on_spectrum_clicked)
-
-        layout.addWidget(header)
-        layout.addWidget(self._canvas_spectrum, 1)
-        return widget
-
-        layout = QHBoxLayout(widget)
-        layout.setContentsMargins(2, 2, 2, 2)
-        layout.setSpacing(2)
-
-        self._canvas_gx = ImageCanvas()
-        self._canvas_gy = ImageCanvas()
-        self._canvas_edge = ImageCanvas()
-        self._canvas_gx.installEventFilter(self)
-        self._canvas_gy.installEventFilter(self)
-        self._canvas_edge.installEventFilter(self)
-
-        for heading, canvas in [
-            ("Gx — Horizontal gradient", self._canvas_gx),
-            ("Gy — Vertical gradient", self._canvas_gy),
-            ("Magnitude — sqrt(Gx²+Gy²)", self._canvas_edge),
-        ]:
-            pane = QWidget()
-            pane.setStyleSheet(f"background: #080a0d; border: 1px solid {ACCENT_DIM};")
-            pane_layout = QVBoxLayout(pane)
-            pane_layout.setContentsMargins(0, 0, 0, 0)
-            pane_layout.setSpacing(0)
-
-            header = QLabel(heading)
-            header.setStyleSheet(
-                f"padding: 5px 10px; background: {TEXT0}; border-bottom: 1px solid {ACCENT_DIM};"
-                f"font-size: 10px; color: {TEXT2};"
-            )
-            pane_layout.addWidget(header)
-            pane_layout.addWidget(canvas, 1)
-            layout.addWidget(pane)
-        return widget
-
     # Phase 2: Fourier spectrum tab used for interactive notch selection.
     def _build_fourier_tab(self) -> QWidget:
         widget = QWidget()
@@ -675,7 +621,8 @@ class MainWindow(QMainWindow):
             getattr(self, "_canvas_edge", None),
 
             # Phase 2: include Fourier spectrum canvas in shared zoom/mode handling.
-            getattr(self, "_canvas_spectrum", None),        ]:
+            getattr(self, "_canvas_spectrum", None),
+        ]:
             if canvas is not None:
                 canvases.append(canvas)
         return canvases
