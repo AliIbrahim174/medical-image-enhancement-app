@@ -197,7 +197,12 @@ class MainWindow(QMainWindow):
             menu.addAction(self._undo_action)
             menu.addAction(self._redo_action)
         elif title == "View":
-            for label, index in [("Single", 0), ("Before / After", 1), ("Edge View", 2)]:
+            for label, index in [
+    ("Single", 0),
+    ("Before / After", 1),
+    ("Edge View", 2),
+    ("Fourier", 3),
+]:
                 action = menu.addAction(label)
                 action.triggered.connect(lambda _checked=False, i=index: self._switch_view(i))
         elif title == "Help":
@@ -666,11 +671,14 @@ class MainWindow(QMainWindow):
         if self._current is None:
             return
 
+        if hasattr(self._sidebar, "roi_btn"):
+            self._sidebar.roi_btn.setChecked(False)
+
         gray = ensure_gray(self._current)
         hist, mean, var = compute_roi_stats(gray, x1, y1, x2, y2)
         dlg = ROIStatsDialog(hist, mean, var, parent=self)
         dlg.exec()
-
+        
     def _update_stats_and_metadata(self, meta: dict | None = None, source_path: str = "") -> None:
         if self._current is None:
             self._meta_panel.clear()

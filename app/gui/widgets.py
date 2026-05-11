@@ -408,6 +408,17 @@ class HistogramWidget(QWidget):
         self._hist = hist
         self.update()
 
+        # Phase 2 / Member 3: directly display a precomputed ROI histogram.
+    def set_hist(self, hist: np.ndarray) -> None:
+        """Set a precomputed 256-bin histogram and redraw."""
+        hist = np.asarray(hist, dtype=np.int64)
+
+        if hist.shape[0] != 256:
+            raise ValueError("HistogramWidget.set_hist expects a 256-bin histogram.")
+
+        self._hist = hist
+        self.update()
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.fillRect(self.rect(), QColor("#0f1117"))
