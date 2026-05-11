@@ -3,7 +3,8 @@
 import numpy as np
 
 from PyQt6.QtWidgets import QScrollArea, QLabel, QWidget
-from PyQt6.QtCore import Qt
+# Phase 2: pyqtSignal is needed so the Fourier spectrum canvas can report clicked pixels.
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import (
     QImage, QPixmap, QPainter, QColor, QLinearGradient, QBrush
 )
@@ -21,6 +22,9 @@ class ImageCanvas(QScrollArea):
     Automatically scales the image to fill the available viewport while
     preserving the aspect ratio.
     """
+
+    # Phase 2: emitted when the user clicks the Fourier spectrum image.
+    image_clicked = pyqtSignal(int, int)  # row, col in original image-array coordinates
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -41,6 +45,10 @@ class ImageCanvas(QScrollArea):
         self._pan_start = None
         self._h_start = 0
         self._v_start = 0
+
+        # Phase 2: when True, mouse clicks are converted to image row/col coordinates.
+        self._click_reporting = False
+
         self.setMouseTracking(True)
         self.viewport().setMouseTracking(True)
         self._label.setMouseTracking(True)
@@ -67,6 +75,63 @@ class ImageCanvas(QScrollArea):
 
     def fit_to_window(self) -> None:
         self.set_display_zoom(100)
+
+    # Phase 2: enable/disable direct click selection on the Fourier spectrum.
+    def set_click_reporting(self, enabled: bool) -> None:
+        """Enable/disable emitting image_clicked(row, col) on left click."""
+        self._click_reporting = bool(enabled)
+        if enabled:
+            self.viewport().setCursor(Qt.CursorShape.CrossCursor)
+
+    # Phase 2: remove notch markers from the Fourier spectrum canvas.
+    def clear_markers(self) -> None:
+        """Clear annotation markers painted on the canvas."""
+        self._annotations.clear()
+        self._refresh()
+
+    # Phase 2: add a visible marker at an original image-array pixel position.
+    def add_marker_at_pixel(self, row: int, col: int) -> None:
+        """Add marker using original image pixel coordinates."""
+        if self._array is None:
+            return
+
+        h, w = self._array.shape[:2]
+        if h <= 0 or w <= 0:
+            return
+
+        rx = col / max(1, w - 1)
+        ry = row / max(1, h - 1)
+        self._annotations.append((rx, ry))
+        self._refresh()
+
+    # Phase 2: map mouse click on scaled Qt pixmap back to true array row/col.
+    def _event_to_array_pixel(self, event) -> tuple[int, int] | None:
+        """Map mouse click on scaled pixmap back to original array row/col."""
+        if self._array is None:
+            return None
+
+        pix = self._label.pixmap()
+        if pix is None or pix.isNull():
+            return None
+
+        viewport_pos = event.position().toPoint()
+        label_pos = self._label.mapFrom(self.viewport(), viewport_pos)
+
+        pix_w, pix_h = pix.width(), pix.height()
+        offset_x = max(0, (self._label.width() - pix_w) // 2)
+        offset_y = max(0, (self._label.height() - pix_h) // 2)
+
+        x = label_pos.x() - offset_x
+        y = label_pos.y() - offset_y
+
+        if not (0 <= x < pix_w and 0 <= y < pix_h):
+            return None
+
+        arr_h, arr_w = self._array.shape[:2]
+        col = int(round(x * (arr_w - 1) / max(1, pix_w - 1)))
+        row = int(round(y * (arr_h - 1) / max(1, pix_h - 1)))
+
+        return row, col
 
     # ── Internal ──────────────────────────────────────────────────────────────
 
@@ -127,6 +192,14 @@ class ImageCanvas(QScrollArea):
             self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
 
     def mousePressEvent(self, event):
+        # Phase 2: Fourier spectrum click selection for notch filtering.
+        if self._click_reporting and event.button() == Qt.MouseButton.LeftButton:
+            pixel = self._event_to_array_pixel(event)
+            if pixel is not None:
+                row, col = pixel
+                self.image_clicked.emit(row, col)
+                return
+
         if self._mode == "pan" and event.button() == Qt.MouseButton.LeftButton:
             self._pan_active = True
             self._pan_start = event.position().toPoint()
