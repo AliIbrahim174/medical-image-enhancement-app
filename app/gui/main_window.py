@@ -8,6 +8,7 @@ from PyQt6.QtCore import QEvent, Qt
 from PyQt6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QWidget, QHBoxLayout
 
 from ..core.styles import DARK_STYLE, GREEN, TEXT3
+from ..DIP.frequency_domain import shifted_magnitude_spectrum
 from ..DIP.utils import ensure_gray
 from ..workers.processing_worker import ProcessingWorker
 from .file_operations import FileOperations
@@ -212,6 +213,7 @@ class MainWindow(QMainWindow):
 
         self.ui.panels["pipeline"].remove_last()
         self.update_canvases()
+        self._refresh_fourier_spectrum_if_active()
         self.update_stats_and_metadata()
         self.sync_view_zoom()
         self._sync_dirty_state()
@@ -230,6 +232,7 @@ class MainWindow(QMainWindow):
 
         self.ui.panels["pipeline"].add_step(label)
         self.update_canvases()
+        self._refresh_fourier_spectrum_if_active()
         self.update_stats_and_metadata()
         self.sync_view_zoom()
         self._sync_dirty_state()
@@ -246,6 +249,7 @@ class MainWindow(QMainWindow):
 
         self.ui.panels["pipeline"].clear()
         self.update_canvases()
+        self._refresh_fourier_spectrum_if_active()
         self.update_stats_and_metadata()
         self.sync_view_zoom()
         self._sync_dirty_state()
@@ -339,6 +343,30 @@ class MainWindow(QMainWindow):
 
         if self.state.original is not None:
             self.ui.canvases["orig"].set_array(self.state.original)
+
+    def _refresh_fourier_spectrum_if_active(self) -> None:
+        """Regenerate spectrum when Fourier workflow is in use.
+
+        This keeps spectrum and notch picks consistent after history operations
+        like undo/redo/reset without forcing users to press Show Spectrum again.
+        """
+        if self.state.current is None:
+            return
+
+        spectrum_canvas = self.ui.canvases.get("spectrum")
+        tabs = self.ui.panels.get("canvas_tabs")
+        if spectrum_canvas is None:
+            return
+
+        fourier_tab_active = bool(tabs and tabs.currentIndex() == 3)
+        spectrum_was_shown = spectrum_canvas.get_array() is not None
+        if not (fourier_tab_active or spectrum_was_shown):
+            return
+
+        spectrum = shifted_magnitude_spectrum(self.state.current)
+        spectrum_canvas.set_array(spectrum)
+        spectrum_canvas.clear_markers()
+        self.state.selected_notch_center = None
 
     def sync_view_zoom(self) -> None:
         """Sync zoom level across all canvases."""
