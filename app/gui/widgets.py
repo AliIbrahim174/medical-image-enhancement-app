@@ -3,9 +3,9 @@
 import numpy as np
 
 from PyQt6.QtWidgets import QScrollArea, QLabel, QWidget
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal, QRect, QPoint
 from PyQt6.QtGui import (
-    QImage, QPixmap, QPainter, QColor, QLinearGradient, QBrush
+    QImage, QPixmap, QPainter, QPen, QColor, QLinearGradient, QBrush
 )
 
 from ..core import image_processor as ip
@@ -223,3 +223,58 @@ class HistogramWidget(QWidget):
             bh = int((self._hist[i] / mx) * (h - 4))
             x  = int(i * bar_w)
             painter.drawRect(x, h - bh, max(1, int(bar_w)), bh)
+
+
+class ROIImageCanvas(ImageCanvas):
+    """ImageCanvas subclass that lets the user drag a rectangular ROI."""
+    roi_selected = pyqtSignal(int, int, int, int)   # x1, y1, x2, y2
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._roi_start: QPoint | None = None
+        self._roi_end:   QPoint | None = None
+        self._drawing = False
+
+    def set_roi_mode(self, active: bool):
+        self._drawing = active
+        self._roi_start = self._roi_end = None
+        self._refresh()
+
+    def mousePressEvent(self, event):
+        if self._drawing:
+            self._roi_start = event.position().toPoint()
+            self._roi_end   = self._roi_start
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._drawing and self._roi_start:
+            self._roi_end = event.position().toPoint()
+            self.viewport().update()   # trigger repaint for rubber band
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._drawing and self._roi_start:
+            self._roi_end = event.position().toPoint()
+            # Convert widget coords → image pixel coords via zoom factor
+            self.roi_selected.emit(
+                min(self._roi_start.x(), self._roi_end.x()),
+                min(self._roi_start.y(), self._roi_end.y()),
+                max(self._roi_start.x(), self._roi_end.x()),
+                max(self._roi_start.y(), self._roi_end.y()),
+            )
+            self._drawing = False
+        else:
+            super().mouseReleaseEvent(event)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if self._roi_start and self._roi_end:
+            painter = QPainter(self.viewport())
+            pen = QPen(QColor(0, 200, 255), 1.5)
+            pen.setStyle(Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            rect = QRect(self._roi_start, self._roi_end)
+            painter.drawRect(rect)
+            painter.end()

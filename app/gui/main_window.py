@@ -1,7 +1,8 @@
 """Top-level MedVision Workbench window built with PyQt6."""
-
 from __future__ import annotations
-
+from ..DIP.noise import inject_gaussian_noise, inject_uniform_noise
+from ..DIP.roi_stats import compute_roi_stats
+from .roi_dialog import ROIStatsDialog
 import os
 
 import numpy as np
@@ -48,7 +49,7 @@ from ..io.image_io import load_image, save_image
 from ..workers.processing_worker import ProcessingWorker
 from .panels import MetadataPanel, PipelinePanel
 from .sidebar import ToolsSidebar
-from .widgets import HistogramWidget, ImageCanvas
+from .widgets import HistogramWidget, ImageCanvas, ROIImageCanvas
 
 
 class MainWindow(QMainWindow):
@@ -213,10 +214,12 @@ class MainWindow(QMainWindow):
         self._sidebar.apply_edge.connect(self._on_apply_edge)
         self._sidebar.apply_hist_eq.connect(self._on_hist_eq)
         self._sidebar.apply_median.connect(self._on_median)
+        self._sidebar.apply_noise.connect(self._on_noise)
         self._sidebar.accumulate_toggled.connect(self._on_accumulate_toggled)
         root.addWidget(self._sidebar)
 
         self._canvas_area = self._build_canvas_area()
+        self._sidebar.roi_btn.toggled.connect(self._canvas_proc.set_roi_mode)
         root.addWidget(self._canvas_area, 1)
 
         self._right_panel = self._build_right_panel()
@@ -296,7 +299,8 @@ class MainWindow(QMainWindow):
         self._canvas_tabs.currentChanged.connect(self._on_tab_changed)
         self._canvas_tabs.setDocumentMode(True)
 
-        self._canvas_proc = ImageCanvas()
+        self._canvas_proc = ROIImageCanvas()
+        self._canvas_proc.roi_selected.connect(self._on_roi_selected)
         self._canvas_tabs.addTab(self._canvas_proc, "Processed")
         self._canvas_tabs.addTab(self._build_split_tab(), "Before / After")
         self._canvas_tabs.addTab(self._build_edge_tab(), "Edge View")
@@ -439,9 +443,11 @@ class MainWindow(QMainWindow):
         self._pipeline.undo_requested.connect(self._undo)
         self._pipeline.reset_requested.connect(self._reset_to_original)
         self._right_tabs.addTab(self._pipeline, "Pipeline")
+        # self._init_phase2()  # Removed phase 2 initialization
 
         layout.addWidget(self._right_tabs)
         return panel
+      
 
     def _build_hist_tab(self) -> QWidget:
         widget = QWidget()
@@ -569,6 +575,28 @@ class MainWindow(QMainWindow):
             if canvas is not None:
                 canvases.append(canvas)
         return canvases
+
+    def _on_noise(self, noise_type: str, params: dict):
+        if not self._require_image():
+            return
+        base = self._current if self._accumulate else self._original
+        param = params["param"]
+        mode_mark = "(acc)" if self._accumulate else "(orig)"
+        if noise_type == "Gaussian":
+            label = f"Gaussian Noise σ={param:.0f} {mode_mark}"
+            self._start_worker(inject_gaussian_noise, label, base, 0.0, param)
+        else:
+            label = f"Uniform Noise ±{param:.0f} {mode_mark}"
+            self._start_worker(inject_uniform_noise, label, base, -param, param)
+
+    def _on_roi_selected(self, x1: int, y1: int, x2: int, y2: int):
+        if self._current is None:
+            return
+        from ..DIP.utils import ensure_gray
+        gray = ensure_gray(self._current)
+        hist, mean, var = compute_roi_stats(gray, x1, y1, x2, y2)
+        dlg = ROIStatsDialog(hist, mean, var, parent=self)
+        dlg.exec()
 
     def _update_stats_and_metadata(self, meta: dict | None = None, source_path: str = "") -> None:
         if self._current is None:
@@ -998,15 +1026,6 @@ class MainWindow(QMainWindow):
     def _show_about(self):
         QMessageBox.about(
             self,
-            "About MedVision Workbench",
-            "<b style='font-size:14px'>MedVision Workbench</b><br>"
-            "<i>Phase 1 — Spatial Domain Operations</i><br><br>"
-            "• Multi-format I/O: DICOM, JPEG, BMP, PNG<br>"
-            "• Custom 2-D convolution (from scratch)<br>"
-            "• Nearest-Neighbor &amp; Bilinear zoom (from scratch)<br>"
-            "• Average, Gaussian, Median filtering (from scratch)<br>"
-            "• Sobel &amp; Prewitt edge detection (from scratch)<br>"
-            "• Local Histogram Equalization (from scratch)<br>"
-            "• Sequential Enhancement Pipeline with undo<br><br>"
-            "Team 8 - CUFE - BDE - DIP spring 26",
+          
         )
+

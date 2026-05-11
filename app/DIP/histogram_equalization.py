@@ -9,8 +9,9 @@ def local_histogram_equalization(gray: np.ndarray, block_size: int) -> np.ndarra
 	Each non-overlapping block is equalized independently.
 	"""
 	if gray.ndim == 3:
-		gray = gray[:, :, 0]
-
+		gray = (0.299 * gray[:, :, 0] +
+        0.587 * gray[:, :, 1] +
+        0.114 * gray[:, :, 2]).astype(np.uint8)
 	h, w = gray.shape
 	output = gray.copy().astype(np.uint8)
 

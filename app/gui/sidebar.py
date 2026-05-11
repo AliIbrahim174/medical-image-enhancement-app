@@ -69,6 +69,7 @@ class ToolsSidebar(QWidget):
     apply_edge    = pyqtSignal(str, str)
     apply_hist_eq = pyqtSignal(int)
     apply_median  = pyqtSignal(int)
+    apply_noise   = pyqtSignal(str, dict)
     accumulate_toggled = pyqtSignal(bool)
 
     def __init__(self, parent=None):
@@ -112,6 +113,7 @@ class ToolsSidebar(QWidget):
 
         layout.addWidget(self._build_zoom_group())
         layout.addWidget(self._build_smoothing_group())
+        layout.addWidget(self._build_noise_group())
         layout.addWidget(self._build_edge_group())
         layout.addWidget(self._build_median_group())
         layout.addWidget(self._build_histeq_group())
@@ -189,6 +191,35 @@ class ToolsSidebar(QWidget):
         grid.addWidget(btn_avg, 0, 0)
         grid.addWidget(btn_gauss, 0, 1)
         sl.addLayout(grid)
+        return section
+
+    def _build_noise_group(self) -> QWidget:
+        section = CollapsibleSection("Noise Injection")
+        nl = section.bodyLayout()
+
+        r1 = QHBoxLayout()
+        r1.addWidget(QLabel("Type"))
+        self._noise_type = QComboBox()
+        self._noise_type.addItems(["Gaussian", "Uniform"])
+        r1.addWidget(self._noise_type)
+        nl.addLayout(r1)
+
+        r2 = QHBoxLayout()
+        r2.addWidget(QLabel("σ / Range"))
+        self._noise_param = QDoubleSpinBox()
+        self._noise_param.setRange(1.0, 150.0)
+        self._noise_param.setValue(25.0)
+        r2.addWidget(self._noise_param)
+        nl.addLayout(r2)
+
+        btn = QPushButton("⚡ Inject Noise")
+        btn.clicked.connect(self._emit_noise)
+        nl.addWidget(btn)
+
+        # ROI toggle button
+        self.roi_btn = QPushButton("▢ Draw ROI")
+        self.roi_btn.setCheckable(True)
+        nl.addWidget(self.roi_btn)
         return section
 
     def _build_edge_group(self) -> QWidget:
@@ -277,6 +308,11 @@ class ToolsSidebar(QWidget):
 
     def _emit_median(self):
         self.apply_median.emit(self._combo_size(self._median_kernel))
+
+    def _emit_noise(self):
+        self.apply_noise.emit(self._noise_type.currentText(), {
+            "param": self._noise_param.value()
+        })
 
     def _emit_hist_eq(self):
         self.apply_hist_eq.emit(self._combo_size(self._block_size))
