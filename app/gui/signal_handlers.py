@@ -200,6 +200,12 @@ class SignalHandlers:
         mode_text = "Accumulating" if checked else "From Original"
         self.main.set_status(f"Mode: {mode_text}", False)
 
+    def on_snap_toggled(self, checked: bool) -> None:
+        """Toggle Fourier spectrum auto-snap."""
+        self.main.state.snap_to_bright_peak = checked
+        mode_text = "enabled" if checked else "disabled"
+        self.main.set_status(f"Notch snap to bright peak: {mode_text}", False)
+
     # ========== Phase 2: Frequency Domain ==========
 
     def on_show_spectrum(self) -> None:
@@ -222,7 +228,7 @@ class SignalHandlers:
             canvas_tabs.setCurrentIndex(fourier_index)
 
         self.main.set_status(
-            "Fourier spectrum displayed. Click near a bright spike (selection auto-snaps).",
+            "Fourier spectrum displayed. Click near a bright spike, or disable snap in the sidebar.",
             True,
         )
 
@@ -235,12 +241,17 @@ class SignalHandlers:
         spectrum = spectrum_canvas.get_array()
         h, w = spectrum.shape[:2]
 
-        snapped_row, snapped_col = snap_to_bright_peak(
-            spectrum,
-            (row, col),
-            search_radius=14,
-            dc_exclusion_radius=12,
-        )
+        if self.main.state.snap_to_bright_peak:
+            snapped_row, snapped_col = snap_to_bright_peak(
+                spectrum,
+                (row, col),
+                search_radius=14,
+                dc_exclusion_radius=12,
+            )
+            status_prefix = "Notch snapped to"
+        else:
+            snapped_row, snapped_col = int(row), int(col)
+            status_prefix = "Notch selected at"
 
         self.main.state.selected_notch_center = (snapped_row, snapped_col)
         mirror_row, mirror_col = conjugate_notch_center((h, w), (snapped_row, snapped_col))
@@ -252,7 +263,7 @@ class SignalHandlers:
         picked_val = int(spectrum[snapped_row, snapped_col])
         self.main.set_status(
             (
-                f"Notch snapped to ({snapped_row}, {snapped_col}) [I={picked_val}] "
+                f"{status_prefix} ({snapped_row}, {snapped_col}) [I={picked_val}] "
                 f"from click ({row}, {col}); conjugate: ({mirror_row}, {mirror_col})"
             ),
             True,

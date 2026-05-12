@@ -76,6 +76,7 @@ class ToolsSidebar(QWidget):
     apply_noise(str, dict)          noise type, params dict
     show_spectrum()                 request Fourier spectrum display
     apply_notch(str, float, int)    notch type, radius, Butterworth order
+    snap_toggled(bool)              enable or disable spectrum auto-snap
     apply_threshold(int)            binary threshold value
     apply_morphology(str, int, str) operation, SE size, SE shape
     """
@@ -94,6 +95,7 @@ class ToolsSidebar(QWidget):
     # Phase 2 / Members 1 and 2: frequency-domain notch filter signals.
     show_spectrum = pyqtSignal()
     apply_notch = pyqtSignal(str, float, int)  # filter_type, radius, order
+    snap_toggled = pyqtSignal(bool)
 
     # Phase 2 / Member 4: bonus morphology signals.
     apply_threshold = pyqtSignal(int)             # threshold value
@@ -367,6 +369,19 @@ class ToolsSidebar(QWidget):
         r3.addWidget(self._notch_order)
         fl.addLayout(r3)
 
+        self._snap_to_bright = QCheckBox("Snap to bright peak")
+        self._snap_to_bright.setChecked(True)
+        self._snap_to_bright.stateChanged.connect(
+            lambda _state: self.snap_toggled.emit(self._snap_to_bright.isChecked())
+        )
+        self._snap_to_bright.setStyleSheet(
+            "QCheckBox { color: #60a5fa; font-size: 10px; font-weight: 600; }"
+            "QCheckBox::indicator { width: 16px; height: 16px; }"
+            "QCheckBox::indicator:unchecked { background: #1c2030; border: 1px solid #252d42; border-radius: 3px; }"
+            "QCheckBox::indicator:checked { background: #60a5fa; border: 1px solid #60a5fa; border-radius: 3px; }"
+        )
+        fl.addWidget(self._snap_to_bright)
+
         btn_show = QPushButton("Show Fourier Spectrum")
         btn_show.clicked.connect(self.show_spectrum.emit)
         fl.addWidget(btn_show)
@@ -381,7 +396,7 @@ class ToolsSidebar(QWidget):
         )
         fl.addWidget(btn_apply)
 
-        hint = QLabel("1) Show spectrum  2) Click bright spike  3) Apply notch")
+        hint = QLabel("1) Show spectrum  2) Click a spike  3) Apply notch")
         hint.setWordWrap(True)
         hint.setStyleSheet("color: #94a3b8; font-size: 9px;")
         fl.addWidget(hint)

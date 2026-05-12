@@ -284,7 +284,7 @@ class UIBuilder:
         spectrum_layout.setContentsMargins(0, 0, 0, 0)
         spectrum_layout.setSpacing(0)
 
-        spectrum_header = QLabel("Fourier Spectrum <span style='color:{};'>click near a spike (auto-snap enabled)</span>".format(TEXT3))
+        spectrum_header = QLabel("Fourier Spectrum <span style='color:{};'>click near a spike; snap can be toggled in the sidebar</span>".format(TEXT3))
         spectrum_header.setTextFormat(Qt.TextFormat.RichText)
         spectrum_header.setStyleSheet(
             f"padding: 5px 10px; background: {TEXT0}; border-bottom: 1px solid {ACCENT_DIM};"

@@ -29,6 +29,7 @@ class ImageStateManager:
 
         # Phase 2: Fourier notch center
         self.selected_notch_center: tuple[int, int] | None = None
+        self.snap_to_bright_peak: bool = True
 
     def load_image(self, image_array: np.ndarray) -> None:
         """Load a new image."""

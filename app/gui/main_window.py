@@ -119,6 +119,7 @@ class MainWindow(QMainWindow):
         self.sidebar.apply_median.connect(self.handlers.on_median)
         self.sidebar.apply_noise.connect(self.handlers.on_noise)
         self.sidebar.accumulate_toggled.connect(self.handlers.on_accumulate_toggled)
+        self.sidebar.snap_toggled.connect(self.handlers.on_snap_toggled)
         self.sidebar.show_spectrum.connect(self.handlers.on_show_spectrum)
         self.sidebar.apply_notch.connect(self.handlers.on_apply_notch)
         self.sidebar.apply_threshold.connect(self.handlers.on_threshold)
