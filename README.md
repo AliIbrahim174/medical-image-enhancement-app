@@ -1,4 +1,4 @@
-# (DIP Project)
+# medical-image-enhancement-app
 
 is a desktop application for medical and standard image enhancement, built with PyQt5 and NumPy.
 
