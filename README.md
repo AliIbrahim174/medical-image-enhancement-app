@@ -227,24 +227,21 @@ python main.py
 
 ## Screenshots
 
-Add screenshots here after uploading them to the repository.
+### Main Interface
 
-Recommended screenshots:
-
-```text
-assets/screenshots/main-window.png
-assets/screenshots/dicom-view.png
-assets/screenshots/filter-result.png
-assets/screenshots/edge-detection.png
-assets/screenshots/histogram-view.png
-```
-
-Example Markdown after adding screenshots:
-
-```md
 ![Main Window](assets/screenshots/main-window.png)
-![Edge Detection Result](assets/screenshots/edge-detection.png)
-```
+
+### Fourier / Notch Filter Result
+
+![Fourier Result](assets/screenshots/fourier-result.png)
+
+### Fourier Result with Image Metadata Panel
+
+![Fourier Result with Info Panel](assets/screenshots/fourier-result-with-info-panel.png)
+
+### Interactive Notch Filter Workflow
+
+![Notch Filter Workflow](assets/screenshots/notch-filter-workflow.png)
 
 ---
 
